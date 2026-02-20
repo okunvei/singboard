@@ -1,0 +1,328 @@
+<script setup lang="ts">
+import { onMounted, ref, computed } from 'vue'
+import { useConnectionsStore } from '@/stores/connections'
+import type { Connection } from '@/types'
+
+const {
+  filteredConnections,
+  closedConnections,
+  downloadTotal,
+  uploadTotal,
+  paused,
+  filterText,
+  start,
+  closeConnection,
+  closeAllConnections,
+} = useConnectionsStore()
+
+const activeTab = ref<'active' | 'closed'>('active')
+const selectedConnection = ref<Connection | null>(null)
+
+const filteredClosedConnections = computed(() => {
+  if (!filterText.value) return closedConnections.value
+  const q = filterText.value.toLowerCase()
+  return closedConnections.value.filter((c) => {
+    const m = c.metadata
+    return (
+      (m.host || '').toLowerCase().includes(q) ||
+      (m.destinationIP || '').toLowerCase().includes(q) ||
+      (m.sourceIP || '').toLowerCase().includes(q) ||
+      (m.process || '').toLowerCase().includes(q) ||
+      (c.chains || []).join(' ').toLowerCase().includes(q) ||
+      (c.rule || '').toLowerCase().includes(q) ||
+      (c.rulePayload || '').toLowerCase().includes(q)
+    )
+  })
+})
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+function formatSpeed(bytes: number): string {
+  return formatBytes(bytes) + '/s'
+}
+
+function formatDuration(start: string): string {
+  const ms = Date.now() - new Date(start).getTime()
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return s + 's'
+  const m = Math.floor(s / 60)
+  if (m < 60) return m + 'm ' + (s % 60) + 's'
+  const h = Math.floor(m / 60)
+  return h + 'h ' + (m % 60) + 'm'
+}
+
+function getHost(conn: any): string {
+  const m = conn.metadata
+  return m.host || m.destinationIP || '-'
+}
+
+function openDetail(conn: Connection) {
+  selectedConnection.value = conn
+  const modal = document.getElementById('conn-detail-modal') as HTMLDialogElement
+  modal?.showModal()
+}
+
+function formatChains(chains?: string[]): string {
+  if (!chains || chains.length === 0) return '-'
+  return [...chains].reverse().join(' → ')
+}
+
+function closeDetail() {
+  const modal = document.getElementById('conn-detail-modal') as HTMLDialogElement
+  modal?.close()
+  selectedConnection.value = null
+}
+
+onMounted(() => {
+  start()
+})
+</script>
+
+<template>
+  <div class="flex flex-col h-full gap-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-bold shrink-0">连接</h1>
+        <div class="tabs tabs-boxed tabs-sm">
+          <a class="tab" :class="{ 'tab-active': activeTab === 'active' }" @click="activeTab = 'active'">
+            活跃 ({{ filteredConnections.length }})
+          </a>
+          <a class="tab" :class="{ 'tab-active': activeTab === 'closed' }" @click="activeTab = 'closed'">
+            已关闭 ({{ closedConnections.length }})
+          </a>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-base-content/50">
+          ↑ {{ formatBytes(uploadTotal) }} / ↓ {{ formatBytes(downloadTotal) }}
+        </span>
+        <button
+          class="btn btn-xs"
+          :class="paused ? 'btn-warning' : 'btn-ghost'"
+          @click="paused = !paused"
+        >
+          {{ paused ? '继续' : '暂停' }}
+        </button>
+        <button v-if="activeTab === 'active'" class="btn btn-xs btn-error btn-outline" @click="closeAllConnections">
+          断开全部
+        </button>
+      </div>
+    </div>
+
+    <input
+      v-model="filterText"
+      type="text"
+      placeholder="搜索: 主机名, IP, 进程, 规则..."
+      class="input input-sm input-bordered w-full"
+    />
+
+    <div v-show="activeTab === 'active'" class="flex-1 overflow-auto">
+      <table class="table table-xs table-pin-rows">
+        <thead>
+          <tr class="bg-base-200 border-b border-base-content/20">
+            <th>类型</th>
+            <th>主机</th>
+            <th>进程</th>
+            <th>规则</th>
+            <th>链路</th>
+            <th class="text-right">下载</th>
+            <th class="text-right">上传</th>
+            <th class="text-right">下载速度</th>
+            <th class="text-right">上传速度</th>
+            <th class="text-right">时长</th>
+            <th class="w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="conn in filteredConnections"
+            :key="conn.id"
+            class="hover:bg-base-200/50 cursor-pointer"
+            @click="openDetail(conn)"
+          >
+            <td class="whitespace-nowrap">
+              <span class="text-xs leading-none px-1.5 py-0.5 rounded" :class="conn.metadata.network === 'tcp' ? 'bg-info/15 text-info' : 'bg-accent/15 text-accent'">
+                {{ conn.metadata.network }}
+              </span>
+            </td>
+            <td class="max-w-xs truncate" :title="getHost(conn)">
+              {{ getHost(conn) }}
+            </td>
+            <td class="text-base-content/60 whitespace-nowrap" :title="conn.metadata.process">
+              {{ conn.metadata.process || '-' }}
+            </td>
+            <td class="text-xs text-base-content/60 max-w-xl truncate" :title="conn.rule">{{ conn.rule }}</td>
+            <td class="text-xs text-base-content/60 max-w-xl truncate" :title="formatChains(conn.chains)">
+              {{ formatChains(conn.chains) }}
+            </td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.download) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.upload) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.downloadSpeed || 0) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.uploadSpeed || 0) }}</td>
+            <td class="text-right text-xs text-base-content/50 whitespace-nowrap">{{ formatDuration(conn.start) }}</td>
+            <td>
+              <button
+                class="btn btn-ghost btn-xs text-error"
+                @click.stop="closeConnection(conn.id)"
+                title="断开"
+              >
+                ✕
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div
+        v-if="filteredConnections.length === 0"
+        class="flex items-center justify-center py-10 text-base-content/40"
+      >
+        暂无活跃连接
+      </div>
+    </div>
+
+    <div v-show="activeTab === 'closed'" class="flex-1 overflow-auto">
+      <table class="table table-xs table-pin-rows">
+        <thead>
+          <tr class="bg-base-200 border-b border-base-content/20">
+            <th>类型</th>
+            <th>主机</th>
+            <th>进程</th>
+            <th>规则</th>
+            <th>链路</th>
+            <th class="text-right">下载</th>
+            <th class="text-right">上传</th>
+            <th class="text-right">下载速度</th>
+            <th class="text-right">上传速度</th>
+            <th class="text-right">时长</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="conn in filteredClosedConnections"
+            :key="conn.id"
+            class="hover:bg-base-200/50 opacity-60 cursor-pointer"
+            @click="openDetail(conn)"
+          >
+            <td class="whitespace-nowrap">
+              <span class="text-xs leading-none px-1.5 py-0.5 rounded" :class="conn.metadata.network === 'tcp' ? 'bg-info/15 text-info' : 'bg-accent/15 text-accent'">
+                {{ conn.metadata.network }}
+              </span>
+            </td>
+            <td class="max-w-xs truncate" :title="getHost(conn)">
+              {{ getHost(conn) }}
+            </td>
+            <td class="text-base-content/60 whitespace-nowrap" :title="conn.metadata.process">
+              {{ conn.metadata.process || '-' }}
+            </td>
+            <td class="text-xs text-base-content/60 max-w-xl truncate" :title="conn.rule">{{ conn.rule }}</td>
+            <td class="text-xs text-base-content/60 max-w-xl truncate" :title="formatChains(conn.chains)">
+              {{ formatChains(conn.chains) }}
+            </td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.download) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.upload) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.downloadSpeed || 0) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.uploadSpeed || 0) }}</td>
+            <td class="text-right text-xs text-base-content/50 whitespace-nowrap">{{ formatDuration(conn.start) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div
+        v-if="filteredClosedConnections.length === 0"
+        class="flex items-center justify-center py-10 text-base-content/40"
+      >
+        暂无已关闭连接
+      </div>
+    </div>
+
+    <!-- 连接详情弹窗 -->
+    <dialog id="conn-detail-modal" class="modal">
+      <div v-if="selectedConnection" class="modal-box max-w-2xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-lg">连接详情</h3>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="closeDetail">✕</button>
+        </div>
+
+        <div class="space-y-4">
+          <!-- 基本信息 -->
+          <div>
+            <h4 class="text-sm font-semibold text-base-content/70 mb-2">基本信息</h4>
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <span class="text-base-content/50">ID</span>
+              <span class="break-all">{{ selectedConnection.id }}</span>
+              <span class="text-base-content/50">类型</span>
+              <span>{{ selectedConnection.metadata.network }} / {{ selectedConnection.metadata.type }}</span>
+              <span class="text-base-content/50">主机</span>
+              <span class="break-all">{{ getHost(selectedConnection) }}</span>
+              <span class="text-base-content/50">规则</span>
+              <span>{{ selectedConnection.rule }}</span>
+              <span v-if="selectedConnection.rulePayload" class="text-base-content/50">规则载荷</span>
+              <span v-if="selectedConnection.rulePayload">{{ selectedConnection.rulePayload }}</span>
+              <span class="text-base-content/50">链路</span>
+              <span>{{ formatChains(selectedConnection.chains) }}</span>
+              <span class="text-base-content/50">开始时间</span>
+              <span>{{ new Date(selectedConnection.start).toLocaleString() }}</span>
+              <span class="text-base-content/50">持续时长</span>
+              <span>{{ formatDuration(selectedConnection.start) }}</span>
+            </div>
+          </div>
+
+          <!-- 网络元数据 -->
+          <div>
+            <h4 class="text-sm font-semibold text-base-content/70 mb-2">网络信息</h4>
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <span class="text-base-content/50">源地址</span>
+              <span>{{ selectedConnection.metadata.sourceIP }}:{{ selectedConnection.metadata.sourcePort }}</span>
+              <span class="text-base-content/50">目标地址</span>
+              <span>{{ selectedConnection.metadata.destinationIP || '-' }}:{{ selectedConnection.metadata.destinationPort }}</span>
+              <span class="text-base-content/50">DNS 模式</span>
+              <span>{{ selectedConnection.metadata.dnsMode || '-' }}</span>
+              <span v-if="selectedConnection.metadata.sniffHost" class="text-base-content/50">嗅探主机</span>
+              <span v-if="selectedConnection.metadata.sniffHost">{{ selectedConnection.metadata.sniffHost }}</span>
+              <span class="text-base-content/50">进程</span>
+              <span class="break-all">{{ selectedConnection.metadata.process || '-' }}</span>
+              <span v-if="selectedConnection.metadata.processPath" class="text-base-content/50">进程路径</span>
+              <span v-if="selectedConnection.metadata.processPath" class="break-all">{{ selectedConnection.metadata.processPath }}</span>
+            </div>
+          </div>
+
+          <!-- 流量数据 -->
+          <div>
+            <h4 class="text-sm font-semibold text-base-content/70 mb-2">流量信息</h4>
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <span class="text-base-content/50">下载总量</span>
+              <span>{{ formatBytes(selectedConnection.download) }}</span>
+              <span class="text-base-content/50">上传总量</span>
+              <span>{{ formatBytes(selectedConnection.upload) }}</span>
+              <span class="text-base-content/50">下载速度</span>
+              <span>{{ formatSpeed(selectedConnection.downloadSpeed || 0) }}</span>
+              <span class="text-base-content/50">上传速度</span>
+              <span>{{ formatSpeed(selectedConnection.uploadSpeed || 0) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            v-if="activeTab === 'active'"
+            class="btn btn-sm btn-error btn-outline"
+            @click="closeConnection(selectedConnection.id); closeDetail()"
+          >
+            断开连接
+          </button>
+          <button class="btn btn-sm" @click="closeDetail">关闭</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="selectedConnection = null">close</button>
+      </form>
+    </dialog>
+  </div>
+</template>

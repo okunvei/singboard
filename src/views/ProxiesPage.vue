@@ -1,0 +1,453 @@
+<script setup lang="ts">
+import { onMounted, ref, computed, watch } from 'vue'
+import { useProxiesStore } from '@/stores/proxies'
+import { useServiceStore } from '@/stores/service'
+import {
+  fetchProxyProviders,
+  updateProxyProvider,
+  healthCheckProvider,
+} from '@/api'
+import type { ProxyProvider } from '@/types'
+import { getRequestErrorReason } from '@/utils/requestError'
+import { useToastStore } from '@/stores/toast'
+
+const {
+  proxyGroups,
+  loading,
+  loadProxies,
+  switchProxy,
+  testGroupNodes,
+  testNodeLatency,
+  getProxy,
+  getLatency,
+  getTestUrl,
+  isIPv6,
+} = useProxiesStore()
+
+import { useConfigStore } from '@/stores/config'
+const { config } = useConfigStore()
+const { pushToast } = useToastStore()
+const { serviceStatus } = useServiceStore()
+
+const isRunning = computed(() => serviceStatus.value.state === 'running')
+
+const activeTab = ref<'groups' | 'providers'>('groups')
+const expandedGroups = ref<Set<string>>(new Set())
+const testingGroup = ref<string | null>(null)
+const testingNodes = ref<Set<string>>(new Set())
+
+const proxyProviders = ref<ProxyProvider[]>([])
+const providersAvailable = ref(false)
+const updatingProvider = ref<string | null>(null)
+const updatingAll = ref(false)
+const healthCheckingProvider = ref<string | null>(null)
+const expandedProviders = ref<Set<string>>(new Set())
+
+function toggleProvider(name: string) {
+  if (expandedProviders.value.has(name)) {
+    expandedProviders.value.delete(name)
+  } else {
+    expandedProviders.value.add(name)
+  }
+}
+
+const filteredGroups = computed(() =>
+  proxyGroups.value.filter((g) => g.name !== 'GLOBAL')
+)
+
+function toggleGroup(name: string) {
+  if (expandedGroups.value.has(name)) {
+    expandedGroups.value.delete(name)
+  } else {
+    expandedGroups.value.add(name)
+  }
+}
+
+function latencyColor(delay: number): string {
+  if (delay === 0) return 'bg-base-content/10 text-base-content/50'
+  if (delay < 300) return 'bg-success/15 text-success'
+  if (delay < 800) return 'bg-amber-500/15 text-amber-600'
+  return 'bg-error/15 text-error'
+}
+
+function formatLatency(delay: number): string {
+  if (delay === 0) return 'N/A'
+  return delay + 'ms'
+}
+
+function typeFormatter(type: string): string {
+  type = type.toLowerCase()
+  type = type.replace('shadowsocks', 'ss')
+  type = type.replace('hysteria', 'hy')
+  type = type.replace('wireguard', 'wg')
+  return type
+}
+
+function getTypeDescription(nodeName: string): string {
+  const proxy = getProxy(nodeName)
+  if (!proxy) return ''
+  const type = typeFormatter(proxy.type)
+  const udpLabel = proxy.udp ? (proxy.xudp ? 'xudp' : 'udp') : ''
+  const ipv6Label = config.value.ipv6TestEnabled && isIPv6(nodeName) ? 'IPv6' : ''
+  return [type, udpLabel, ipv6Label].filter(Boolean).join(' / ')
+}
+
+async function handleSelect(group: string, name: string) {
+  await switchProxy(group, name)
+}
+
+async function handleTestGroup(name: string) {
+  testingGroup.value = name
+  await testGroupNodes(name)
+  testingGroup.value = null
+}
+
+async function handleTestNode(e: Event, nodeName: string, groupName?: string) {
+  e.stopPropagation()
+  testingNodes.value.add(nodeName)
+  const delay = await testNodeLatency(nodeName, groupName)
+  if (delay === 0) {
+    pushToast({
+      type: 'error',
+      message: `${nodeName}\n@${getTestUrl(groupName)}\n测速超时`,
+    })
+  }
+  testingNodes.value.delete(nodeName)
+}
+
+async function loadProviders() {
+  try {
+    const { data } = await fetchProxyProviders()
+    proxyProviders.value = Object.values(data.providers).filter(
+      (p) => p.name !== 'default' && p.vehicleType !== 'Compatible'
+    )
+    providersAvailable.value = true
+  } catch {
+    providersAvailable.value = false
+  }
+}
+
+async function handleUpdateProvider(name: string) {
+  updatingProvider.value = name
+  try {
+    await updateProxyProvider(name)
+    await loadProviders()
+    await loadProxies()
+  } catch (error) {
+    pushToast({
+      type: 'error',
+      message: `更新代理提供商失败\n${name}\n原因: ${getRequestErrorReason(error)}`,
+    })
+  }
+  updatingProvider.value = null
+}
+
+async function handleUpdateAll() {
+  updatingAll.value = true
+  const updatable = proxyProviders.value.filter((p) => p.vehicleType !== 'Inline')
+  const results = await Promise.allSettled(updatable.map((p) => updateProxyProvider(p.name)))
+  const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+  if (failed.length > 0) {
+    const reasons = Array.from(new Set(failed.map((result) => getRequestErrorReason(result.reason))))
+    pushToast({
+      type: 'error',
+      message: `部分代理提供商更新失败 (${failed.length}/${updatable.length})\n原因: ${reasons.join('；')}`,
+    })
+  }
+  await loadProviders()
+  await loadProxies()
+  updatingAll.value = false
+}
+
+async function handleHealthCheck(name: string) {
+  healthCheckingProvider.value = name
+  try {
+    await healthCheckProvider(name)
+    await loadProxies()
+  } catch {}
+  healthCheckingProvider.value = null
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前'
+  return Math.floor(diff / 86400000) + ' 天前'
+}
+
+function formatExpire(ts: number): string {
+  if (!ts) return '无期限'
+  return new Date(ts * 1000).toLocaleDateString()
+}
+
+function dotColor(delay: number): string {
+  if (delay === 0) return 'bg-base-content/20'
+  if (delay < 300) return 'bg-success'
+  if (delay < 800) return 'bg-amber-500'
+  return 'bg-error'
+}
+
+function testedCount(proxies: ProxyProvider['proxies']): number {
+  return proxies?.filter((n) => getLatency(n.name) > 0).length ?? 0
+}
+
+function formatUsage(info: ProxyProvider['subscriptionInfo']): string {
+  if (!info?.Total) return ''
+  const used = (info.Download ?? 0) + (info.Upload ?? 0)
+  const pct = ((used / info.Total) * 100).toFixed(2)
+  return `${formatBytes(used)} / ${formatBytes(info.Total)} ( ${pct}% )`
+}
+
+onMounted(() => {
+  if (isRunning.value) {
+    loadProxies()
+    loadProviders()
+  }
+})
+
+watch(isRunning, (running) => {
+  if (running) {
+    loadProxies()
+    loadProviders()
+  }
+})
+
+</script>
+
+<template>
+  <div class="flex flex-col h-full gap-3">
+    <template v-if="!isRunning">
+      <div class="flex flex-col items-center justify-center flex-1 gap-4 text-base-content/40">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-16 h-16">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
+        </svg>
+        <div class="text-center space-y-1">
+          <p class="text-lg font-medium">服务未启动</p>
+          <p class="text-sm">请先启动 sing-box 服务以查看代理信息</p>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-bold shrink-0">代理</h1>
+        <div class="tabs tabs-boxed tabs-sm">
+          <a class="tab" :class="{ 'tab-active': activeTab === 'groups' }" @click="activeTab = 'groups'">
+            代理 ({{ filteredGroups.length }})
+          </a>
+          <a
+            v-if="providersAvailable"
+            class="tab"
+            :class="{ 'tab-active': activeTab === 'providers' }"
+            @click="activeTab = 'providers'"
+          >
+            代理提供商 ({{ proxyProviders.length }})
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-show="activeTab === 'groups'"
+      class="flex-1 overflow-auto"
+    >
+      <div v-if="loading && proxyGroups.length === 0" class="flex justify-center py-10">
+        <span class="loading loading-spinner loading-md"></span>
+      </div>
+
+      <div class="space-y-3">
+      <div v-for="group in filteredGroups" :key="group.name" class="bg-base-200 rounded-lg overflow-hidden">
+        <div
+          class="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-base-300 transition-colors"
+          @click="toggleGroup(group.name)"
+        >
+          <div class="flex items-center gap-2">
+            <svg
+              class="w-3 h-3 transition-transform"
+              :class="{ 'rotate-90': expandedGroups.has(group.name) }"
+              viewBox="0 0 12 12"
+            >
+              <path fill="currentColor" d="M4 2l5 4-5 4z" />
+            </svg>
+            <span class="font-medium text-sm">{{ group.name }}</span>
+            <span class="text-xs leading-none px-1.5 py-0.5 rounded bg-base-content/10 text-base-content/60">{{ group.type }}</span>
+            <span class="text-xs text-base-content/50">{{ group.all.length }} 个节点</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-primary">{{ group.now }}</span>
+            <button
+              class="btn btn-xs btn-ghost min-w-0 px-1 h-5 min-h-0"
+              :class="{ 'loading loading-xs': testingGroup === group.name }"
+              @click.stop="handleTestGroup(group.name)"
+              :title="'测试延迟 - ' + group.now"
+            >
+              <template v-if="testingGroup !== group.name">
+                <span
+                  v-if="group.now && getLatency(group.now)"
+                  class="text-xs leading-none px-1.5 py-0.5 rounded"
+                  :class="latencyColor(getLatency(group.now))"
+                >
+                  {{ formatLatency(getLatency(group.now)) }}
+                </span>
+                <span v-else class="text-xs text-base-content/40">N/A</span>
+              </template>
+            </button>
+          </div>
+        </div>
+
+        <div v-show="expandedGroups.has(group.name)" class="px-3 pb-3">
+          <div class="grid gap-2" style="grid-template-columns: repeat(auto-fill, 180px)">
+            <div
+              v-for="nodeName in group.all"
+              :key="nodeName"
+              class="flex h-[70px] w-[180px] flex-col items-start gap-2 p-2 rounded-md text-xs transition-all cursor-pointer overflow-hidden"
+              :class="
+                group.now === nodeName
+                  ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
+                  : 'bg-base-100 hover:bg-base-300'
+              "
+              @click="handleSelect(group.name, nodeName)"
+            >
+              <div class="w-full flex-1 text-sm leading-tight break-all" :title="nodeName">
+                {{ nodeName }}
+              </div>
+              <div class="flex h-4 w-full items-center justify-between">
+                <span
+                  class="truncate text-xs tracking-tight"
+                  :class="group.now === nodeName ? 'text-primary/70' : 'text-base-content/60'"
+                >{{ getTypeDescription(nodeName) }}</span>
+                <button
+                  class="shrink-0 cursor-pointer text-xs leading-none px-1.5 py-0.5 rounded"
+                  :class="[latencyColor(getLatency(nodeName)), { 'loading loading-xs': testingNodes.has(nodeName) }]"
+                  @click="handleTestNode($event, nodeName, group.name)"
+                  title="点击测速"
+                >
+                  <template v-if="!testingNodes.has(nodeName)">{{ formatLatency(getLatency(nodeName)) }}</template>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div v-show="activeTab === 'providers'" class="flex-1 overflow-auto space-y-3">
+      <div v-if="proxyProviders.length === 0" class="flex items-center justify-center py-10 text-base-content/40">
+        暂无代理提供商
+      </div>
+
+      <div v-if="proxyProviders.length > 0" class="flex justify-end">
+        <button
+          class="btn btn-sm btn-ghost"
+          :class="{ 'loading': updatingAll }"
+          @click="handleUpdateAll"
+          :disabled="updatingAll"
+        >
+          <template v-if="!updatingAll">全部更新</template>
+        </button>
+      </div>
+
+      <div v-for="provider in proxyProviders" :key="provider.name" class="bg-base-200 rounded-lg overflow-hidden">
+        <div
+          class="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-base-300 transition-colors"
+          @click="toggleProvider(provider.name)"
+        >
+          <div class="flex items-center gap-2">
+            <svg
+              class="w-3 h-3 transition-transform"
+              :class="{ 'rotate-90': expandedProviders.has(provider.name) }"
+              viewBox="0 0 12 12"
+            >
+              <path fill="currentColor" d="M4 2l5 4-5 4z" />
+            </svg>
+            <span class="font-medium text-sm">{{ provider.name }}</span>
+            <span class="text-xs text-base-content/50">({{ testedCount(provider.proxies) }}/{{ provider.proxies?.length ?? 0 }})</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button
+              class="btn btn-ghost btn-xs btn-circle"
+              :class="{ 'loading': healthCheckingProvider === provider.name }"
+              @click.stop="handleHealthCheck(provider.name)"
+              title="健康检查"
+            >
+              <svg v-if="healthCheckingProvider !== provider.name" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+              </svg>
+            </button>
+            <button
+              v-if="provider.vehicleType !== 'Inline'"
+              class="btn btn-ghost btn-xs btn-circle"
+              :class="{ 'loading': updatingProvider === provider.name }"
+              @click.stop="handleUpdateProvider(provider.name)"
+              title="更新"
+            >
+              <svg v-if="updatingProvider !== provider.name" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="provider.subscriptionInfo?.Total" class="px-3 text-xs text-base-content/60 space-y-0.5">
+          <div v-if="provider.subscriptionInfo!.Expire">到期时间: {{ formatExpire(provider.subscriptionInfo!.Expire!) }}</div>
+          <div class="flex items-center justify-between">
+            <span>{{ formatUsage(provider.subscriptionInfo) }}</span>
+            <span class="text-base-content/40">更新于 {{ formatDate(provider.updatedAt) }}</span>
+          </div>
+        </div>
+        <div v-else class="px-3 text-xs text-base-content/40">更新于 {{ formatDate(provider.updatedAt) }}</div>
+        <div class="px-3 pb-2 pt-1">
+          <div class="flex flex-wrap gap-1">
+            <span
+              v-for="node in provider.proxies"
+              :key="node.name"
+              class="w-2.5 h-2.5 rounded-full"
+              :class="dotColor(getLatency(node.name))"
+              :title="node.name + ': ' + formatLatency(getLatency(node.name))"
+            ></span>
+          </div>
+        </div>
+
+        <div v-show="expandedProviders.has(provider.name)" class="px-3 pb-3">
+          <div class="grid gap-2" style="grid-template-columns: repeat(auto-fill, 180px)">
+            <div
+              v-for="node in provider.proxies"
+              :key="node.name"
+              class="bg-base-100 flex h-[70px] w-[180px] flex-col items-start gap-2 p-2 rounded-md text-xs overflow-hidden"
+            >
+              <div class="w-full flex-1 text-sm leading-tight break-all" :title="node.name">
+                {{ node.name }}
+              </div>
+              <div class="flex h-4 w-full items-center justify-between">
+                <span class="truncate text-xs tracking-tight text-base-content/60">
+                  {{ getTypeDescription(node.name) }}
+                </span>
+                <button
+                  class="shrink-0 cursor-pointer text-xs leading-none px-1.5 py-0.5 rounded"
+                  :class="[latencyColor(getLatency(node.name)), { 'loading loading-xs': testingNodes.has(node.name) }]"
+                  @click="handleTestNode($event, node.name, provider.name)"
+                  title="点击测速"
+                >
+                  <template v-if="!testingNodes.has(node.name)">{{ formatLatency(getLatency(node.name)) }}</template>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </template>
+  </div>
+</template>
