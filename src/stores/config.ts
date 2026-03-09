@@ -17,6 +17,13 @@ function createClashApiProfile(name: string, url: string, secret: string): Clash
 }
 
 function normalizeConfig(raw: any): AppConfig {
+  const normalizeWindowsPath = (value: unknown): string => {
+    if (typeof value !== 'string') return ''
+    if (value.startsWith('\\\\?\\UNC\\')) return `\\\\${value.slice(8)}`
+    if (value.startsWith('\\\\?\\')) return value.slice(4)
+    return value
+  }
+
   const savedProfiles = Array.isArray(raw?.clashApis)
     ? raw.clashApis
       .filter((item: any) => item && typeof item === 'object')
@@ -46,9 +53,9 @@ function normalizeConfig(raw: any): AppConfig {
   return {
     clashApis,
     activeClashApiId,
-    singboxPath: typeof raw?.singboxPath === 'string' ? raw.singboxPath : '',
-    configPath: typeof raw?.configPath === 'string' ? raw.configPath : '',
-    workingDir: typeof raw?.workingDir === 'string' ? raw.workingDir : '',
+    singboxPath: normalizeWindowsPath(raw?.singboxPath),
+    configPath: normalizeWindowsPath(raw?.configPath),
+    workingDir: normalizeWindowsPath(raw?.workingDir),
     serviceName: typeof raw?.serviceName === 'string' && raw.serviceName ? raw.serviceName : 'sing-box',
     theme: typeof raw?.theme === 'string' && raw.theme ? raw.theme : 'light',
     latencyTestUrl: typeof raw?.latencyTestUrl === 'string' && raw.latencyTestUrl

@@ -19,6 +19,23 @@ fn is_singbox_binary(file_name: &str) -> bool {
     )
 }
 
+#[cfg(windows)]
+fn normalize_path_for_client(path: &Path) -> String {
+    let raw = path.to_string_lossy().to_string();
+    if let Some(stripped) = raw.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", stripped)
+    } else if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+        stripped.to_string()
+    } else {
+        raw
+    }
+}
+
+#[cfg(not(windows))]
+fn normalize_path_for_client(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
 fn scan_dir(
     dir: &Path,
     depth: usize,
@@ -67,10 +84,29 @@ fn scan_dir(
 }
 
 #[tauri::command]
-pub async fn detect_runtime_files() -> Result<DetectedRuntimeFiles, String> {
+pub async fn detect_runtime_files(base_dir: Option<String>) -> Result<DetectedRuntimeFiles, String> {
     tokio::task::spawn_blocking(move || {
-        let base_dir = std::env::current_dir()
-            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+        let base_dir = if let Some(input) = base_dir {
+            let trimmed = input.trim();
+            if trimmed.is_empty() {
+                std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {}", e))?
+            } else {
+                let path = PathBuf::from(trimmed);
+                if !path.exists() {
+                    return Err(format!("Working directory does not exist: {}", path.display()));
+                }
+                if !path.is_dir() {
+                    return Err(format!("Working directory is not a directory: {}", path.display()));
+                }
+                path
+            }
+        } else {
+            std::env::current_dir()
+                .map_err(|e| format!("Failed to get current directory: {}", e))?
+        };
+
+        let base_dir = std::fs::canonicalize(&base_dir).unwrap_or(base_dir);
         let mut singbox_path = None;
         let mut config_path = None;
 
@@ -78,9 +114,13 @@ pub async fn detect_runtime_files() -> Result<DetectedRuntimeFiles, String> {
         let found = singbox_path.is_some() && config_path.is_some();
 
         Ok(DetectedRuntimeFiles {
-            base_dir: base_dir.to_string_lossy().to_string(),
-            singbox_path: singbox_path.map(|p| p.to_string_lossy().to_string()),
-            config_path: config_path.map(|p| p.to_string_lossy().to_string()),
+            base_dir: normalize_path_for_client(&base_dir),
+            singbox_path: singbox_path
+                .as_ref()
+                .map(|p| normalize_path_for_client(p.as_path())),
+            config_path: config_path
+                .as_ref()
+                .map(|p| normalize_path_for_client(p.as_path())),
             found,
         })
     })

@@ -13,6 +13,7 @@ const navItems = [
   { path: '/connections', label: '连接', icon: 'connection' },
   { path: '/logs', label: '日志', icon: 'log' },
   { path: '/rules', label: '规则', icon: 'rule' },
+  { path: '/config-editor', label: '配置编辑', icon: 'editor' },
   { path: '/settings', label: '设置', icon: 'settings' },
 ]
 
@@ -65,6 +66,7 @@ const statusText = computed(() => {
           <template v-else-if="item.icon === 'connection'">🔗</template>
           <template v-else-if="item.icon === 'log'">📝</template>
           <template v-else-if="item.icon === 'rule'">📋</template>
+          <template v-else-if="item.icon === 'editor'">🧩</template>
           <template v-else-if="item.icon === 'settings'">⚙️</template>
         </span>
         <span>{{ item.label }}</span>

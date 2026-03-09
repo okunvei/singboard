@@ -1,37 +1,59 @@
 # Singboard
 
-Singboard is a `Tauri + Vue 3` desktop dashboard for sing-box. It provides a GUI for Clash API data, proxy groups, connections, rules, and service management.
-
-## Tech Stack
-
-- Frontend: `Vue 3`, `TypeScript`, `Vite`, `TailwindCSS`, `DaisyUI`, `ECharts`
-- Backend: `Rust`, `Tauri 2`
-- Platform: currently focused on `Windows` (with Windows service integration)
+`Singboard` is a desktop dashboard for sing-box built with `Tauri 2 + Vue 3`, focused on Clash API visualization and Windows service management.
 
 ## Features
 
-- Overview: traffic, memory, IP info, latency, connection topology
-- Proxies: proxy group switching, node latency test, provider update and health check
-- Rules: rules and rule provider listing/updating
-- Connections: live connection table and disconnect actions
-- Logs: live logs with filtering
-- Settings:
-  - sing-box service install, start, stop, restart, uninstall
-  - Clash mode switching based on core-reported mode list
-  - Clash API URL and secret configuration
-  - Latency URL and IPv6 test toggle
-  - Core path, config path, and working directory setup
-  - Theme switching (`light`, `dark`, `dracula`, `nord`)
-- First-run setup wizard for path and Clash API initialization
+- Overview
+  - Realtime upload/download speed, active connection count, and memory usage
+  - Network information (IP info + connectivity/latency checks for common sites)
+  - Connection topology (Sankey chart)
+- Proxies
+  - Proxy group switching and per-node latency testing
+  - Per-group latency test URL support
+  - Optional IPv6 reachability indicator
+  - Proxy provider list, single/all update, and health check
+- Rules
+  - Rule list filtering
+  - Rule provider list and update actions
+  - Rule provider content search (SRS/cache.db based matching)
+- Connections
+  - Active/closed connection tabs
+  - Connection detail modal
+  - Disconnect single/all and pause updates
+- Logs
+  - Realtime log stream
+  - Level filter, keyword filter, pause, clear, and auto-scroll
+- Config Editor
+  - Read/write `config.json`
+  - Whole-file and module-based editing modes
+  - JSON formatting
+  - `sing-box check` validation
+  - JSON validation before save, plus automatic `.bak` backup on write
+- Settings
+  - Windows service install/uninstall/start/stop/restart
+  - Service status polling and error log reading
+  - Multi Clash API profiles (add/edit/switch/remove)
+  - Clash mode switching from core-reported mode list
+  - `sing-box` path, config path, working directory, and service name settings
+  - Theme switching (`light`/`dark`/`dracula`/`nord`)
+- First-run Setup Wizard
+  - Guided working directory and Clash API setup
+  - Auto-scan for `sing-box` executable and `config.json` under the selected directory
+
+## Tech Stack
+
+- Frontend: `Vue 3`, `TypeScript`, `Vite`, `TailwindCSS`, `DaisyUI`, `ECharts`, `CodeMirror 6`
+- Backend: `Rust`, `Tauri 2`
+- Platform: currently focused on `Windows` (with Windows Service integration)
 
 ## Requirements
 
 - Node.js 18+
 - `pnpm`
 - Rust stable (recommended via `rustup`)
-- Windows C++ build tools (MSVC toolchain)
+- Windows C++ Build Tools (MSVC)
 - WebView2 Runtime
-- sing-box binary and config file (configured in Settings or detected by setup wizard)
 
 ## Development
 
@@ -41,13 +63,13 @@ Install dependencies:
 pnpm install
 ```
 
-Run frontend dev server:
+Run frontend only:
 
 ```bash
 pnpm dev
 ```
 
-Run Tauri app in development mode:
+Run desktop app in development mode:
 
 ```bash
 pnpm tauri dev
@@ -71,37 +93,23 @@ pnpm tauri build
 
 ```text
 .
-├─ src/                 # Vue frontend
-├─ src-tauri/           # Rust + Tauri backend
+├─ src/                 # Vue frontend (views, stores, API layer)
+├─ src-tauri/           # Rust + Tauri commands and service integration
 ├─ public/
 ├─ package.json
 └─ src-tauri/tauri.conf.json
 ```
 
-## Key Configuration
+## Configuration and Data
 
-- Tauri identifier in `src-tauri/tauri.conf.json` (`identifier`)
-- Clash API and runtime paths in the in-app Settings page
 - Default landing route: `/proxies`
-
-## Local Data Storage
-
-App state is persisted via WebView local storage and cache:
-
-- Typical path: `%LOCALAPPDATA%\\singboard\\EBWebView\\Default\\`
-- `Local Storage\\leveldb` stores frontend `localStorage` data
-
-If you used an old app identifier before, old and new storage folders may exist at the same time.
+- Runtime settings are persisted via in-app Settings (localStorage)
+- Typical data directory: `%LOCALAPPDATA%\singboard\EBWebView\Default\`
 
 ## Notes
 
-- This dashboard relies on Clash API. Make sure sing-box exposes the API and is reachable.
-- Default Windows service name is `sing-box`, and can be changed in Settings.
-
-
-## License
-
-[GPL-3.0](LICENSE)
+- This project depends on Clash API; make sure sing-box exposes a reachable API endpoint.
+- The default Windows service name is `sing-box` and can be changed in Settings.
 
 ---
 

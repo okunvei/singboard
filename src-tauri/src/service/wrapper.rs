@@ -90,7 +90,7 @@ fn run_service_inner(_arguments: Vec<OsString>) -> Result<(), String> {
         .map_err(|e| format!("Failed to set status: {:?}", e))?;
 
     let (singbox_path, config_path, working_dir) = read_service_params(SERVICE_NAME)?;
-    let log_path = resolve_service_error_log_path();
+    let log_path = resolve_service_error_log_path(SERVICE_NAME);
 
     // 启动前清除旧的错误日志
     let _ = fs::remove_file(&log_path);
@@ -228,13 +228,20 @@ fn run_service_inner(_arguments: Vec<OsString>) -> Result<(), String> {
 fn spawn_singbox(singbox_path: &str, config_path: &str, working_dir: &str) -> Result<Child, String> {
     let work_dir = if working_dir.is_empty() {
         let config = std::path::Path::new(config_path);
-        config
-            .parent()
+        config.parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+            .or_else(|| {
+                let singbox = std::path::Path::new(singbox_path);
+                singbox.parent().map(|p| p.to_path_buf())
+            })
+            .ok_or_else(|| "WorkingDir is empty and cannot be inferred from configPath or singboxPath".to_string())?
     } else {
         std::path::PathBuf::from(working_dir)
     };
+
+    if !work_dir.is_dir() {
+        return Err(format!("Working directory does not exist: {}", work_dir.display()));
+    }
 
     let mut cmd = Command::new(singbox_path);
     cmd.args(["run", "-c", config_path, "-D", &work_dir.to_string_lossy()])

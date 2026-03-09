@@ -53,11 +53,36 @@ fn find_log_dir(base_dir: &Path) -> Option<PathBuf> {
     None
 }
 
-pub fn resolve_service_error_log_path() -> PathBuf {
-    let base_dir = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
-        .or_else(|| std::env::current_dir().ok())
+fn resolve_service_base_dir(service_name: &str) -> Option<PathBuf> {
+    let (singbox_path, config_path, working_dir) = read_service_params(service_name).ok()?;
+
+    if !working_dir.trim().is_empty() {
+        let path = PathBuf::from(working_dir.trim());
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+
+    let config = Path::new(config_path.trim());
+    if let Some(parent) = config.parent() {
+        if parent.is_dir() {
+            return Some(parent.to_path_buf());
+        }
+    }
+
+    let singbox = Path::new(singbox_path.trim());
+    if let Some(parent) = singbox.parent() {
+        if parent.is_dir() {
+            return Some(parent.to_path_buf());
+        }
+    }
+
+    None
+}
+
+pub fn resolve_service_error_log_path(service_name: &str) -> PathBuf {
+    let base_dir = resolve_service_base_dir(service_name)
+        .or_else(|| std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.to_path_buf())))
         .unwrap_or_default();
 
     let log_dir = find_log_dir(&base_dir).unwrap_or(base_dir);
@@ -428,8 +453,7 @@ pub fn read_service_params(service_name: &str) -> Result<(String, String, String
 
 /// 读取 sing-box 最近一次的错误日志
 pub fn read_service_error_log(service_name: &str) -> Result<String, String> {
-    let _ = service_name;
-    let log_path = resolve_service_error_log_path();
+    let log_path = resolve_service_error_log_path(service_name);
     std::fs::read_to_string(&log_path)
         .map_err(|e| format!("Failed to read error log: {}", e))
 }

@@ -782,21 +782,6 @@ fn collect_candidate_dirs(candidates: &[&str]) -> Vec<std::path::PathBuf> {
         }
     }
 
-    // Also try the executable's directory and current dir
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(d) = exe.parent() {
-            let d = d.to_path_buf();
-            if !dirs.contains(&d) {
-                dirs.push(d);
-            }
-        }
-    }
-    if let Ok(d) = std::env::current_dir() {
-        if !dirs.contains(&d) {
-            dirs.push(d);
-        }
-    }
-
     dirs
 }
 
@@ -942,9 +927,6 @@ fn find_local_srs_from_config(
     if !working_dir.is_empty() {
         base_dirs.push(PathBuf::from(working_dir));
     }
-    if let Ok(cwd) = std::env::current_dir() {
-        base_dirs.push(cwd);
-    }
     base_dirs.dedup();
 
     for item in rule_sets {
@@ -1054,7 +1036,7 @@ pub fn srs_match_cache(cache_path: String, tag: String, query: String) -> Result
 
 /// Match provider by tag:
 /// 1) try cache.db if available
-/// 2) fallback to local `<tag>.srs` under singboard/runtime directories recursively
+/// 2) fallback to local `<tag>.srs` under configured sing-box related directories recursively
 #[tauri::command]
 pub fn srs_match_provider(
     working_dir: String,
@@ -1092,12 +1074,12 @@ pub fn srs_match_provider(
 
     if let Some(e) = last_cache_error {
         Err(format!(
-            "{}; and local '{}.srs' not found under working/config/sing-box/singboard directories",
+            "{}; and local '{}.srs' not found under configured working/config/sing-box directories",
             e, tag
         ))
     } else {
         Err(format!(
-            "no cache.db found; and local '{}.srs' not found under working/config/sing-box/singboard directories",
+            "no cache.db found; and local '{}.srs' not found under configured working/config/sing-box directories",
             tag
         ))
     }

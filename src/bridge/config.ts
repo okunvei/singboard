@@ -26,8 +26,8 @@ export async function getSingboxVersion(singboxPath: string): Promise<string> {
   return invoke<string>('get_singbox_version', { singboxPath })
 }
 
-export async function detectRuntimeFiles(): Promise<DetectedRuntimeFiles> {
-  return invoke<DetectedRuntimeFiles>('detect_runtime_files')
+export async function detectRuntimeFiles(baseDir?: string): Promise<DetectedRuntimeFiles> {
+  return invoke<DetectedRuntimeFiles>('detect_runtime_files', { baseDir })
 }
 
 export async function srsMatch(path: string, query: string): Promise<boolean> {

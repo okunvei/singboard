@@ -30,9 +30,8 @@ const { loadProxies, resumePendingTests } = useProxiesStore()
 
 const setupWizardVisible = ref(false)
 const setupError = ref('')
+const setupSaving = ref(false)
 const setupForm = ref({
-  singboxPath: '',
-  configPath: '',
   workingDir: '',
   clashApiUrl: '',
   clashApiSecret: '',
@@ -47,13 +46,9 @@ function hasRequiredPaths() {
 }
 
 function openSetupWizard(partial?: {
-  singboxPath?: string
-  configPath?: string
   workingDir?: string
 }) {
   setupForm.value = {
-    singboxPath: partial?.singboxPath ?? config.value.singboxPath ?? '',
-    configPath: partial?.configPath ?? config.value.configPath ?? '',
     workingDir: partial?.workingDir ?? config.value.workingDir ?? '',
     clashApiUrl: clashApiUrl.value || 'http://127.0.0.1:9090',
     clashApiSecret: clashApiSecret.value || '',
@@ -74,8 +69,6 @@ async function initRuntimePaths() {
   try {
     const detected = await detectRuntimeFiles()
     openSetupWizard({
-      singboxPath: detected.singboxPath,
-      configPath: detected.configPath,
       workingDir: detected.baseDir,
     })
   } catch {
@@ -83,25 +76,41 @@ async function initRuntimePaths() {
   }
 }
 
-function saveSetup() {
-  const singboxPath = setupForm.value.singboxPath.trim()
-  const configPath = setupForm.value.configPath.trim()
+async function saveSetup() {
   const workingDir = setupForm.value.workingDir.trim()
-  const clashApiUrl = setupForm.value.clashApiUrl.trim()
-  const clashApiSecret = setupForm.value.clashApiSecret
+  const apiUrl = setupForm.value.clashApiUrl.trim()
+  const apiSecret = setupForm.value.clashApiSecret
 
-  if (!singboxPath || !configPath || !workingDir) {
-    setupError.value = '请填写核心路径、配置文件路径和工作目录。'
+  if (!workingDir) {
+    setupError.value = '请填写工作目录。'
     return
   }
-  if (!clashApiUrl) {
+  if (!apiUrl) {
     setupError.value = '请填写 Clash API 地址。'
     return
   }
 
-  updateConfig({ singboxPath, configPath, workingDir })
-  setSingleClashApi(clashApiUrl, clashApiSecret)
-  setupWizardVisible.value = false
+  setupSaving.value = true
+  setupError.value = ''
+  try {
+    const detected = await detectRuntimeFiles(workingDir)
+    if (!detected.singboxPath || !detected.configPath) {
+      setupError.value = '未在该目录及子目录中检测到 sing-box 核心或 config.json，请检查目录后重试。'
+      return
+    }
+
+    updateConfig({
+      workingDir: detected.baseDir,
+      singboxPath: detected.singboxPath,
+      configPath: detected.configPath,
+    })
+    setSingleClashApi(apiUrl, apiSecret)
+    setupWizardVisible.value = false
+  } catch (e: any) {
+    setupError.value = e?.message || '自动检测失败，请检查工作目录是否有效。'
+  } finally {
+    setupSaving.value = false
+  }
 }
 
 function goToSettings() {
@@ -196,28 +205,10 @@ watch(
       <div class="w-full max-w-xl rounded-lg bg-base-100 p-5 shadow-xl space-y-4">
         <h2 class="text-lg font-semibold">初始化向导</h2>
         <p class="text-sm text-base-content/70">
-          首次运行请手动确认路径配置和 Clash API 设置。
+          只需填写工作目录，系统会自动扫描该目录及其子目录，识别 sing-box 核心与配置文件。
         </p>
 
         <div class="text-sm font-medium text-base-content/70">路径配置</div>
-        <div class="form-control">
-          <label class="label"><span class="label-text text-xs">sing-box 核心路径</span></label>
-          <input
-            v-model="setupForm.singboxPath"
-            type="text"
-            class="input input-sm input-bordered"
-            placeholder="C:\\sing-box\\sing-box.exe"
-          />
-        </div>
-        <div class="form-control">
-          <label class="label"><span class="label-text text-xs">配置文件路径</span></label>
-          <input
-            v-model="setupForm.configPath"
-            type="text"
-            class="input input-sm input-bordered"
-            placeholder="C:\\sing-box\\config.json"
-          />
-        </div>
         <div class="form-control">
           <label class="label"><span class="label-text text-xs">工作目录</span></label>
           <input
@@ -253,7 +244,9 @@ watch(
 
         <div class="flex justify-end gap-2">
           <button class="btn btn-sm btn-ghost" @click="goToSettings">前往设置页</button>
-          <button class="btn btn-sm btn-primary" @click="saveSetup">保存并继续</button>
+          <button class="btn btn-sm btn-primary" :class="{ loading: setupSaving }" @click="saveSetup">
+            自动检测并继续
+          </button>
         </div>
       </div>
     </div>
