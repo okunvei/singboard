@@ -11,6 +11,7 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { lintGutter } from '@codemirror/lint'
 import { tags } from '@lezer/highlight'
+import { parseJsonWithComments, stripJsonComments } from '@/utils/jsonc'
 
 const props = defineProps<{
   configPath: string
@@ -175,6 +176,8 @@ function createEditor() {
         ...foldKeymap,
         ...completionKeymap,
         indentWithTab,
+        { key: 'Ctrl-/', run: () => { handleBatchComment(); return true } },
+        { key: 'Mod-/', run: () => { handleBatchComment(); return true } },
         { key: 'Mod-s', run: () => { void handleSave(); return true } },
       ]),
       EditorView.updateListener.of((update) => {
@@ -220,7 +223,7 @@ function cloneDefaultValue(key: string): unknown {
 
 function ensureStructuredConfigFromEditor(showError = true): boolean {
   try {
-    const parsed = JSON.parse(getEditorContent())
+    const parsed = parseJsonWithComments(getEditorContent())
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       if (showError) {
         pushToast({ message: '配置根节点必须是 JSON 对象', type: 'error' })
@@ -250,7 +253,7 @@ function applyEditorChangesToState(showError = true): boolean {
   const content = getEditorContent()
   if (editorMode.value === 'whole') {
     try {
-      const parsed = JSON.parse(content)
+      const parsed = parseJsonWithComments(content)
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         if (showError) {
           pushToast({ message: '配置根节点必须是 JSON 对象', type: 'error' })
@@ -271,7 +274,7 @@ function applyEditorChangesToState(showError = true): boolean {
     fullConfigObject.value = {}
   }
   try {
-    const parsed = JSON.parse(content)
+    const parsed = parseJsonWithComments(content)
     const key = activeModule.value
     if (!ensureModuleType(key, parsed)) {
       if (showError) {
@@ -293,7 +296,7 @@ function applyEditorChangesToState(showError = true): boolean {
 function draftFullConfigForDirtyCheck(): Record<string, unknown> | null {
   if (editorMode.value === 'whole') {
     try {
-      const parsed = JSON.parse(getEditorContent())
+      const parsed = parseJsonWithComments(getEditorContent())
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return null
       }
@@ -305,7 +308,7 @@ function draftFullConfigForDirtyCheck(): Record<string, unknown> | null {
 
   if (!fullConfigObject.value) return null
   try {
-    const parsed = JSON.parse(getEditorContent())
+    const parsed = parseJsonWithComments(getEditorContent())
     if (!ensureModuleType(activeModule.value, parsed)) {
       return null
     }
@@ -320,7 +323,7 @@ function draftFullConfigForDirtyCheck(): Record<string, unknown> | null {
 
 function recomputeDirtyState() {
   const current = getEditorContent()
-  if (editorMode.value === 'whole' && !savedFullNormalized.value) {
+  if (editorMode.value === 'whole') {
     hasChanges.value = current !== savedRawContent.value
     return
   }
@@ -389,7 +392,7 @@ async function loadConfig() {
     savedRawContent.value = content
     setEditorContent(content)
     try {
-      const parsed = JSON.parse(content)
+      const parsed = parseJsonWithComments(content)
       fullConfigObject.value =
         parsed && typeof parsed === 'object' && !Array.isArray(parsed)
           ? (parsed as Record<string, unknown>)
@@ -415,10 +418,8 @@ async function handleSave() {
       saving.value = false
       return
     }
-    const content =
-      editorMode.value === 'whole'
-        ? getEditorContent()
-        : JSON.stringify(fullConfigObject.value ?? {}, null, 2)
+    const currentRawContent = getEditorContent()
+    const content = JSON.stringify(fullConfigObject.value ?? {}, null, 2)
     await writeSingboxConfig(props.configPath, content)
 
     const normalized = normalizeRootObject(fullConfigObject.value)
@@ -436,7 +437,12 @@ async function handleSave() {
       recomputeDirtyState()
     }
     hasChanges.value = false
+    if (editorMode.value === 'whole' && stripJsonComments(currentRawContent) !== currentRawContent) {
+      pushToast({ message: '配置已保存，注释已在保存时移除', type: 'info' })
+      return
+    }
     pushToast({ message: '配置文件已保存', type: 'info' })
+    return
   } catch (e: any) {
     pushToast({ message: '保存失败: ' + (e?.message || e), type: 'error' })
   } finally {
@@ -454,10 +460,7 @@ async function handleValidate() {
   }
   validating.value = true
   try {
-    const content =
-      editorMode.value === 'whole'
-        ? getEditorContent()
-        : JSON.stringify(fullConfigObject.value ?? {}, null, 2)
+    const content = JSON.stringify(fullConfigObject.value ?? {}, null, 2)
     await validateSingboxConfigContent(
       props.singboxPath,
       props.configPath,
@@ -483,6 +486,88 @@ function handleFormat() {
     recomputeDirtyState()
     pushToast({ message: '已格式化', type: 'info' })
   } catch {}
+}
+
+function handleBatchComment() {
+  if (!editorView) return
+
+  const doc = editorView.state.doc
+  const targetLineNumbers = new Set<number>()
+
+  for (const range of editorView.state.selection.ranges) {
+    const fromLine = doc.lineAt(range.from).number
+    const toAnchor = range.empty ? range.to : Math.max(range.from, range.to - 1)
+    const toLine = doc.lineAt(toAnchor).number
+    for (let lineNo = fromLine; lineNo <= toLine; lineNo += 1) {
+      targetLineNumbers.add(lineNo)
+    }
+  }
+
+  if (targetLineNumbers.size === 0) {
+    pushToast({ message: '请选择需要注释的行', type: 'error' })
+    return
+  }
+
+  const lineInfos = Array.from(targetLineNumbers)
+    .sort((a, b) => b - a)
+    .map((lineNo) => {
+      const line = doc.line(lineNo)
+      const commentMatch = line.text.match(/^(\s*)\/\/ ?/)
+      return { line, commentMatch }
+    })
+
+  const commentedLines = lineInfos.filter((info) => !!info.commentMatch)
+  const uncommentedLines = lineInfos.filter((info) => !info.commentMatch)
+
+  const changes: Array<{ from: number; to: number; insert: string }> = []
+  let changedCount = 0
+
+  if (uncommentedLines.length === 0 && commentedLines.length > 0) {
+    for (const info of commentedLines) {
+      const line = info.line
+      const match = info.commentMatch
+      if (!match) continue
+      const indentLength = match[1].length
+      const markerLength = match[0].length - indentLength
+      const from = line.from + indentLength
+      changes.push({
+        from,
+        to: from + markerLength,
+        insert: '',
+      })
+      changedCount += 1
+    }
+
+    if (changes.length === 0) {
+      pushToast({ message: '所选行无需处理', type: 'info' })
+      return
+    }
+
+    editorView.dispatch({ changes })
+    recomputeDirtyState()
+    pushToast({ message: `已取消注释 ${changedCount} 行`, type: 'info' })
+    return
+  }
+
+  for (const info of uncommentedLines) {
+    const line = info.line
+    const indentLength = (line.text.match(/^\s*/) ?? [''])[0].length
+    changes.push({
+      from: line.from + indentLength,
+      to: line.from + indentLength,
+      insert: '// ',
+    })
+    changedCount += 1
+  }
+
+  if (changes.length === 0) {
+    pushToast({ message: '所选行无需处理', type: 'info' })
+    return
+  }
+
+  editorView.dispatch({ changes })
+  recomputeDirtyState()
+  pushToast({ message: `已注释 ${changedCount} 行`, type: 'info' })
 }
 
 onMounted(() => {
@@ -557,6 +642,13 @@ watch(() => props.configPath, (newPath, oldPath) => {
           title="格式化 JSON"
         >
           格式化
+        </button>
+        <button
+          class="btn btn-xs btn-ghost"
+          @click="handleBatchComment"
+          title="批量注释所选行"
+        >
+          注释
         </button>
         <button
           class="btn btn-xs btn-outline"

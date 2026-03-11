@@ -7,7 +7,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 1 && args[1] == "service" {
-        if let Err(e) = singboard_lib::service::wrapper::run_service() {
+        let service_name = args.get(2).cloned().unwrap_or_else(|| "sing-box".to_string());
+        if let Err(e) = singboard_lib::service::wrapper::run_service(&service_name) {
             eprintln!("Service error: {}", e);
             std::process::exit(1);
         }

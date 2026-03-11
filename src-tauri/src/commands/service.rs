@@ -38,8 +38,8 @@ pub async fn service_install(
     tokio::task::spawn_blocking(move || {
         let exe_path = std::env::current_exe()
             .map_err(|e| format!("Failed to get current exe path: {}", e))?;
-        let bin_path = format!("\"{}\" service", exe_path.display());
-        let display_name = format!("sing-box ({})", service_name);
+        let bin_path = format!("\"{}\" service \"{}\"", exe_path.display(), service_name);
+        let display_name = format!("{} (singboard)", service_name);
 
         scm::write_service_params(&service_name, &singbox_path, &config_path, &working_dir)?;
 

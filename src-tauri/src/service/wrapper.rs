@@ -14,14 +14,19 @@ use windows_service::service_dispatcher;
 
 use super::scm::{read_service_params, resolve_service_error_log_path};
 
-const SERVICE_NAME: &str = "sing-box";
+static SERVICE_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 const STARTUP_VERIFY_SECONDS: u64 = 2;
 const STARTUP_RETRY_DELAY_SECONDS: u64 = 5;
 const STARTUP_MAX_ATTEMPTS: u32 = 3;
 
-pub fn run_service() -> Result<(), String> {
-    service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+fn get_service_name() -> &'static str {
+    SERVICE_NAME.get().map(|s| s.as_str()).unwrap_or("sing-box")
+}
+
+pub fn run_service(service_name: &str) -> Result<(), String> {
+    SERVICE_NAME.set(service_name.to_string()).ok();
+    service_dispatcher::start(get_service_name(), ffi_service_main)
         .map_err(|e| format!("Failed to start service dispatcher: {:?}", e))
 }
 
@@ -74,7 +79,8 @@ fn run_service_inner(_arguments: Vec<OsString>) -> Result<(), String> {
         }
     };
 
-    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)
+    let svc_name = get_service_name();
+    let status_handle = service_control_handler::register(svc_name, event_handler)
         .map_err(|e| format!("Failed to register service control handler: {:?}", e))?;
 
     status_handle
@@ -89,8 +95,8 @@ fn run_service_inner(_arguments: Vec<OsString>) -> Result<(), String> {
         })
         .map_err(|e| format!("Failed to set status: {:?}", e))?;
 
-    let (singbox_path, config_path, working_dir) = read_service_params(SERVICE_NAME)?;
-    let log_path = resolve_service_error_log_path(SERVICE_NAME);
+    let (singbox_path, config_path, working_dir) = read_service_params(svc_name)?;
+    let log_path = resolve_service_error_log_path(svc_name);
 
     // 启动前清除旧的错误日志
     let _ = fs::remove_file(&log_path);

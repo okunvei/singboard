@@ -257,7 +257,12 @@ async function handleServiceAction(action: string) {
 async function checkVersion() {
   if (!config.value.singboxPath) return
   try {
-    singboxVersion.value = await getSingboxVersion(config.value.singboxPath)
+    const raw = await getSingboxVersion(config.value.singboxPath)
+    const firstLine = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => !!line) ?? raw.trim()
+    singboxVersion.value = firstLine.replace(/\bversion\b/ig, '').replace(/\s{2,}/g, ' ').trim()
   } catch {
     singboxVersion.value = '获取失败'
   }

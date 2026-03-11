@@ -336,7 +336,7 @@ pub fn install_service(
             return Err(format!("CreateService failed: error {}", err));
         }
 
-        let desc_text = to_wide("sing-box proxy service managed by singboard");
+        let desc_text = to_wide("Proxy service managed by singboard");
         let mut desc = SERVICE_DESCRIPTIONW {
             lpDescription: desc_text.as_ptr() as *mut _,
         };

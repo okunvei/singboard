@@ -2,14 +2,11 @@
 import { onMounted, computed, ref } from 'vue'
 import { useOverviewStore } from '@/stores/overview'
 import { useConnectionsStore } from '@/stores/connections'
-import { fetchVersion } from '@/api'
 import NetworkInfo from '@/components/overview/NetworkInfo.vue'
 import TopologyChart from '@/components/overview/TopologyChart.vue'
 
 const { currentTraffic, memory, start: startOverview } = useOverviewStore()
 const { connections, start: startConnections } = useConnectionsStore()
-
-const version = ref('')
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -28,10 +25,6 @@ const memoryUsage = computed(() => formatBytes(memory.value.inuse))
 onMounted(async () => {
   startOverview()
   startConnections()
-  try {
-    const { data } = await fetchVersion()
-    version.value = data.version
-  } catch {}
 })
 </script>
 
@@ -61,9 +54,5 @@ onMounted(async () => {
     <NetworkInfo />
 
     <TopologyChart />
-
-    <div v-if="version" class="text-xs text-base-content/40">
-      sing-box {{ version }}
-    </div>
   </div>
 </template>

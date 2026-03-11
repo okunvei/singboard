@@ -14,6 +14,7 @@ const { config } = useConfigStore()
 const chartEl = ref<HTMLElement>()
 const isPaused = ref(false)
 let myChart: echarts.ECharts | null = null
+let resizeOb: ResizeObserver | null = null
 
 const layerColors = ['#6a6fc5', '#a8d4a0', '#fddb8a', '#f2a0a0']
 const darkThemes = new Set(['dark', 'dracula'])
@@ -178,13 +179,15 @@ onMounted(() => {
   watch(sankeyData, () => updateChart(), { deep: true })
   watch(() => config.value.theme, () => updateChart())
 
-  const resizeObserver = new ResizeObserver(() => {
+  resizeOb = new ResizeObserver(() => {
     myChart?.resize()
   })
-  if (chartEl.value) resizeObserver.observe(chartEl.value)
+  if (chartEl.value) resizeOb.observe(chartEl.value)
 })
 
 onUnmounted(() => {
+  resizeOb?.disconnect()
+  resizeOb = null
   myChart?.dispose()
   myChart = null
 })
