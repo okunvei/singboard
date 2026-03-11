@@ -2,16 +2,16 @@
 import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useToastStore } from '@/stores/toast'
 import { readSingboxConfig, writeSingboxConfig, validateSingboxConfigContent } from '@/bridge/config'
-import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine } from '@codemirror/view'
-import { EditorState } from '@codemirror/state'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine, Decoration, ViewPlugin, ViewUpdate } from '@codemirror/view'
+import { EditorState, RangeSetBuilder } from '@codemirror/state'
+import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from '@codemirror/commands'
 import { json } from '@codemirror/lang-json'
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, foldKeymap, indentOnInput, HighlightStyle } from '@codemirror/language'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { lintGutter } from '@codemirror/lint'
 import { tags } from '@lezer/highlight'
-import { parseJsonWithComments, stripJsonComments } from '@/utils/jsonc'
+import { parseJsonWithComments, applyJsoncModification, extractJsoncValueText } from '@/utils/jsonc'
 
 const props = defineProps<{
   configPath: string
@@ -59,6 +59,7 @@ const activeModule = ref<string>('log')
 const fullConfigObject = ref<Record<string, unknown> | null>(null)
 const savedRawContent = ref('')
 const savedFullNormalized = ref('')
+const wholeRawContent = ref('')
 const moduleItems = computed<Array<{ key: string; label: string }>>(() => {
   const keys = new Set<string>()
   const dynamicKeys = fullConfigObject.value ? Object.keys(fullConfigObject.value) : []
@@ -134,6 +135,13 @@ const editorTheme = EditorView.theme({
     backgroundColor: 'oklch(var(--p) / 0.15)',
     outline: '1px solid oklch(var(--p) / 0.4)',
   },
+  '.cm-jsonc-comment': {
+    color: 'oklch(var(--bc) / 0.4) !important',
+    fontStyle: 'italic',
+  },
+  '.cm-jsonc-comment span': {
+    color: 'oklch(var(--bc) / 0.4) !important',
+  },
 })
 
 const highlightColors = HighlightStyle.define([
@@ -144,6 +152,73 @@ const highlightColors = HighlightStyle.define([
   { tag: tags.propertyName, color: 'oklch(var(--p, 0.6 0.2 270))' },
   { tag: tags.punctuation, color: 'oklch(var(--bc) / 0.6)' },
 ])
+
+const commentMark = Decoration.mark({ class: 'cm-jsonc-comment' })
+
+function buildCommentDecorations(view: EditorView) {
+  const builder = new RangeSetBuilder<Decoration>()
+  const doc = view.state.doc
+  let inBlock = false
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i)
+    const text = line.text
+    if (inBlock) {
+      const endIdx = text.indexOf('*/')
+      if (endIdx >= 0) {
+        builder.add(line.from, line.from + endIdx + 2, commentMark)
+        inBlock = false
+      } else {
+        builder.add(line.from, line.to, commentMark)
+      }
+      continue
+    }
+    const trimmed = text.trimStart()
+    if (trimmed.startsWith('//')) {
+      builder.add(line.from, line.to, commentMark)
+    } else if (trimmed.startsWith('/*')) {
+      const endIdx = text.indexOf('*/', text.indexOf('/*') + 2)
+      if (endIdx >= 0) {
+        builder.add(line.from + text.indexOf('/*'), line.from + endIdx + 2, commentMark)
+      } else {
+        builder.add(line.from + text.indexOf('/*'), line.to, commentMark)
+        inBlock = true
+      }
+    } else {
+      const lineIdx = text.indexOf('//')
+      if (lineIdx >= 0) {
+        let inStr = false
+        let escaped = false
+        let isComment = false
+        for (let j = 0; j < text.length - 1; j++) {
+          if (escaped) { escaped = false; continue }
+          if (text[j] === '\\') { escaped = true; continue }
+          if (text[j] === '"') { inStr = !inStr; continue }
+          if (!inStr && text[j] === '/' && text[j + 1] === '/') {
+            builder.add(line.from + j, line.to, commentMark)
+            isComment = true
+            break
+          }
+        }
+      }
+    }
+  }
+  return builder.finish()
+}
+
+const commentHighlightPlugin = ViewPlugin.fromClass(
+  class {
+    decorations
+    constructor(view: EditorView) {
+      this.decorations = buildCommentDecorations(view)
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = buildCommentDecorations(update.view)
+      }
+    }
+  },
+  { decorations: (v) => v.decorations },
+)
 
 function createEditor() {
   if (!editorContainer.value) return
@@ -166,6 +241,7 @@ function createEditor() {
       lintGutter(),
       json(),
       editorTheme,
+      commentHighlightPlugin,
       syntaxHighlighting(highlightColors),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       keymap.of([
@@ -336,6 +412,8 @@ function recomputeDirtyState() {
   hasChanges.value = JSON.stringify(draft, null, 2) !== savedFullNormalized.value
 }
 
+const moduleRawContents = ref<Record<string, string>>({})
+
 function renderModuleContent(keepChangeState = false) {
   if (!fullConfigObject.value) return
   const key = activeModule.value
@@ -344,7 +422,12 @@ function renderModuleContent(keepChangeState = false) {
     value = cloneDefaultValue(key)
     fullConfigObject.value[key] = value
   }
-  setEditorContent(JSON.stringify(value, null, 2), keepChangeState)
+  const rawText = moduleRawContents.value[key]
+  if (rawText !== undefined) {
+    setEditorContent(rawText, keepChangeState)
+  } else {
+    setEditorContent(JSON.stringify(value, null, 2), keepChangeState)
+  }
 }
 
 function switchMode(mode: 'whole' | 'module') {
@@ -355,6 +438,16 @@ function switchMode(mode: 'whole' | 'module') {
   const keepChanges = hasChanges.value
   if (mode === 'module') {
     if (!fullConfigObject.value && !ensureStructuredConfigFromEditor()) return
+    wholeRawContent.value = getEditorContent()
+    const raw = wholeRawContent.value
+    const rawMap: Record<string, string> = {}
+    if (fullConfigObject.value) {
+      for (const key of Object.keys(fullConfigObject.value)) {
+        const text = extractJsoncValueText(raw, key)
+        if (text !== null) rawMap[key] = text
+      }
+    }
+    moduleRawContents.value = rawMap
     if (!moduleItems.value.some((item) => item.key === activeModule.value)) {
       activeModule.value = moduleItems.value[0]?.key ?? 'log'
     }
@@ -364,7 +457,26 @@ function switchMode(mode: 'whole' | 'module') {
   }
 
   editorMode.value = 'whole'
-  if (fullConfigObject.value) {
+  if (wholeRawContent.value) {
+    moduleRawContents.value[activeModule.value] = getEditorContent()
+    let restored = wholeRawContent.value
+    if (fullConfigObject.value) {
+      try {
+        const original = parseJsonWithComments<Record<string, unknown>>(wholeRawContent.value)
+        for (const [key, val] of Object.entries(fullConfigObject.value)) {
+          if (JSON.stringify(original[key]) !== JSON.stringify(val)) {
+            restored = applyJsoncModification(restored, [key], val)
+          }
+        }
+      } catch {
+        restored = JSON.stringify(fullConfigObject.value, null, 2)
+      }
+    }
+    wholeRawContent.value = restored
+    moduleRawContents.value = {}
+    setEditorContent(restored, keepChanges)
+  } else if (fullConfigObject.value) {
+    moduleRawContents.value = {}
     setEditorContent(JSON.stringify(fullConfigObject.value, null, 2), keepChanges)
   }
 }
@@ -375,6 +487,7 @@ function switchModule(next: string) {
     activeModule.value = next
     return
   }
+  moduleRawContents.value[activeModule.value] = getEditorContent()
   if (!applyEditorChangesToState()) return
   const keepChanges = hasChanges.value
   activeModule.value = next
@@ -390,6 +503,7 @@ async function loadConfig() {
   try {
     const content = await readSingboxConfig(props.configPath)
     savedRawContent.value = content
+    wholeRawContent.value = content
     setEditorContent(content)
     try {
       const parsed = parseJsonWithComments(content)
@@ -414,35 +528,50 @@ async function handleSave() {
   if (!props.configPath) return
   saving.value = true
   try {
-    if (!applyEditorChangesToState()) {
-      saving.value = false
-      return
-    }
-    const currentRawContent = getEditorContent()
-    const content = JSON.stringify(fullConfigObject.value ?? {}, null, 2)
-    await writeSingboxConfig(props.configPath, content)
-
-    const normalized = normalizeRootObject(fullConfigObject.value)
-    if (normalized) {
-      savedFullNormalized.value = normalized
-      savedRawContent.value = normalized
-      if (editorMode.value === 'whole') {
-        setEditorContent(normalized)
-      } else {
-        renderModuleContent()
+    if (editorMode.value === 'whole') {
+      const rawContent = getEditorContent()
+      let parsed: Record<string, unknown>
+      try {
+        const p = parseJsonWithComments(rawContent)
+        if (!p || typeof p !== 'object' || Array.isArray(p)) {
+          pushToast({ message: '配置根节点必须是 JSON 对象', type: 'error' })
+          saving.value = false
+          return
+        }
+        parsed = p as Record<string, unknown>
+      } catch (e: any) {
+        pushToast({ message: 'JSON 语法错误: ' + e.message, type: 'error' })
+        saving.value = false
+        return
       }
+      await writeSingboxConfig(props.configPath, rawContent)
+      fullConfigObject.value = parsed
+      savedRawContent.value = rawContent
+      wholeRawContent.value = rawContent
+      savedFullNormalized.value = normalizeRootObject(parsed) ?? ''
+      hasChanges.value = false
+      pushToast({ message: '配置文件已保存', type: 'info' })
     } else {
-      savedRawContent.value = content
-      savedFullNormalized.value = ''
-      recomputeDirtyState()
+      if (!applyEditorChangesToState()) {
+        saving.value = false
+        return
+      }
+      const content = JSON.stringify(fullConfigObject.value ?? {}, null, 2)
+      await writeSingboxConfig(props.configPath, content)
+      wholeRawContent.value = content
+      const normalized = normalizeRootObject(fullConfigObject.value)
+      if (normalized) {
+        savedFullNormalized.value = normalized
+        savedRawContent.value = normalized
+        renderModuleContent()
+      } else {
+        savedRawContent.value = content
+        savedFullNormalized.value = ''
+        recomputeDirtyState()
+      }
+      hasChanges.value = false
+      pushToast({ message: '配置文件已保存', type: 'info' })
     }
-    hasChanges.value = false
-    if (editorMode.value === 'whole' && stripJsonComments(currentRawContent) !== currentRawContent) {
-      pushToast({ message: '配置已保存，注释已在保存时移除', type: 'info' })
-      return
-    }
-    pushToast({ message: '配置文件已保存', type: 'info' })
-    return
   } catch (e: any) {
     pushToast({ message: '保存失败: ' + (e?.message || e), type: 'error' })
   } finally {
@@ -455,12 +584,26 @@ async function handleValidate() {
     pushToast({ message: '请先在设置中配置 sing-box 路径', type: 'error' })
     return
   }
-  if (!applyEditorChangesToState()) {
-    return
-  }
   validating.value = true
   try {
-    const content = JSON.stringify(fullConfigObject.value ?? {}, null, 2)
+    let content: string
+    if (editorMode.value === 'whole') {
+      const rawContent = getEditorContent()
+      try {
+        const p = parseJsonWithComments(rawContent)
+        if (!p || typeof p !== 'object' || Array.isArray(p)) {
+          pushToast({ message: '配置根节点必须是 JSON 对象', type: 'error' })
+          return
+        }
+      } catch (e: any) {
+        pushToast({ message: 'JSON 语法错误: ' + e.message, type: 'error' })
+        return
+      }
+      content = rawContent
+    } else {
+      if (!applyEditorChangesToState()) return
+      content = JSON.stringify(fullConfigObject.value ?? {}, null, 2)
+    }
     await validateSingboxConfigContent(
       props.singboxPath,
       props.configPath,
@@ -486,6 +629,14 @@ function handleFormat() {
     recomputeDirtyState()
     pushToast({ message: '已格式化', type: 'info' })
   } catch {}
+}
+
+function handleUndo() {
+  if (editorView) undo(editorView)
+}
+
+function handleRedo() {
+  if (editorView) redo(editorView)
 }
 
 function handleBatchComment() {
@@ -591,50 +742,22 @@ watch(() => props.configPath, (newPath, oldPath) => {
 
 <template>
   <div class="bg-base-200 rounded-lg p-4 flex flex-col h-full min-h-0">
-    <div class="flex items-center justify-between gap-2 flex-wrap shrink-0">
-      <div class="flex items-center gap-2 min-w-0">
+    <div class="flex flex-col gap-2 shrink-0">
+      <div class="flex items-center gap-2">
         <h2 class="font-semibold text-sm shrink-0">配置编辑</h2>
-        <span v-if="props.configPath" class="text-xs text-base-content/50 truncate max-w-md" :title="props.configPath">
-          {{ props.configPath }}
-        </span>
-        <span v-if="hasChanges" class="badge badge-xs badge-warning">未保存</span>
-      </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <div class="join">
-          <button
-            class="btn btn-xs join-item"
-            :class="editorMode === 'whole' ? 'btn-primary' : 'btn-ghost'"
-            @click="switchMode('whole')"
-          >
-            整体编辑
-          </button>
-          <button
-            class="btn btn-xs join-item"
-            :class="editorMode === 'module' ? 'btn-primary' : 'btn-ghost'"
-            @click="switchMode('module')"
-          >
-            分模块编辑
-          </button>
-        </div>
-        <select
-          v-if="editorMode === 'module'"
-          class="select select-xs select-bordered w-36"
-          :value="activeModule"
-          @change="switchModule(($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="item in moduleItems" :key="item.key" :value="item.key">
-            {{ item.label }}
-          </option>
-        </select>
-      </div>
-      <div class="flex items-center gap-1.5">
         <button
           class="btn btn-xs btn-ghost"
-          :disabled="loading"
-          @click="loadConfig"
-          title="重新加载"
+          @click="handleUndo"
+          title="撤销 (Ctrl+Z)"
         >
-          刷新
+          撤销
+        </button>
+        <button
+          class="btn btn-xs btn-ghost"
+          @click="handleRedo"
+          title="重做 (Ctrl+Y)"
+        >
+          重做
         </button>
         <button
           class="btn btn-xs btn-ghost"
@@ -651,7 +774,7 @@ watch(() => props.configPath, (newPath, oldPath) => {
           注释
         </button>
         <button
-          class="btn btn-xs btn-outline"
+          class="btn btn-xs btn-ghost"
           :class="{ loading: validating }"
           @click="handleValidate"
           title="使用 sing-box 校验配置"
@@ -659,7 +782,7 @@ watch(() => props.configPath, (newPath, oldPath) => {
           校验
         </button>
         <button
-          class="btn btn-xs btn-primary"
+          class="btn btn-xs btn-ghost disabled:bg-transparent"
           :class="{ loading: saving }"
           :disabled="!hasChanges"
           @click="handleSave"
@@ -667,6 +790,38 @@ watch(() => props.configPath, (newPath, oldPath) => {
         >
           保存
         </button>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-2">
+          <div class="join">
+            <button
+              class="btn btn-xs join-item"
+              :class="editorMode === 'whole' ? 'btn-primary' : 'btn-ghost'"
+              @click="switchMode('whole')"
+            >
+              整体编辑
+            </button>
+            <button
+              class="btn btn-xs join-item"
+              :class="editorMode === 'module' ? 'btn-primary' : 'btn-ghost'"
+              @click="switchMode('module')"
+            >
+              分模块编辑
+            </button>
+          </div>
+          <select
+            v-if="editorMode === 'module'"
+            class="select select-xs select-bordered w-36"
+            :value="activeModule"
+            @change="switchModule(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="item in moduleItems" :key="item.key" :value="item.key">
+              {{ item.label }}
+            </option>
+          </select>
+        </div>
+        <div class="flex-1"></div>
+        <span v-if="hasChanges" class="badge badge-xs badge-warning">未保存</span>
       </div>
     </div>
 

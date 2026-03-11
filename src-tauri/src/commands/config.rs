@@ -142,9 +142,6 @@ pub async fn write_config(path: String, content: String) -> Result<(), String> {
         let _ = tokio::fs::copy(&path, &backup).await;
     }
 
-    serde_json::from_str::<serde_json::Value>(&content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
-
     tokio::fs::write(&path, &content)
         .await
         .map_err(|e| format!("Failed to write config: {}", e))
@@ -225,9 +222,6 @@ pub async fn validate_config_content(
     content: String,
     working_dir: Option<String>,
 ) -> Result<String, String> {
-    serde_json::from_str::<serde_json::Value>(&content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
-
     let temp_path = make_validate_temp_path(Path::new(&config_path));
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
