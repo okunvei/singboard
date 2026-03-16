@@ -160,16 +160,15 @@ const proxyGroups = computed<ProxyGroup[]>(() => {
 export function useProxiesStore() {
   function getTestUrl(groupName?: string): string {
     const { config } = useConfigStore()
-    if (groupName && config.value.groupTestUrls[groupName]) {
-      return config.value.groupTestUrls[groupName]
-    }
-    if (groupName) {
-      const proxy = proxyMap.value[groupName]
-      if (proxy?.testUrl) return proxy.testUrl
-      const provider = providerList.value.find(p => p.name === groupName)
-      if (provider?.testUrl) return provider.testUrl
-    }
-    return config.value.latencyTestUrl || 'https://www.gstatic.com/generate_204'
+    const defaultUrl = config.value.latencyTestUrl || 'https://www.gstatic.com/generate_204'
+    if (!groupName) return defaultUrl
+
+    const groupTestUrl = config.value.groupTestUrls[groupName]
+    if (groupTestUrl) return groupTestUrl
+
+    const proxyNode = proxyMap.value[groupName]
+      || providerList.value.find(p => p.name === groupName)
+    return proxyNode?.testUrl || defaultUrl
   }
 
   async function loadProxies() {
