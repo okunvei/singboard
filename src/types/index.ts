@@ -147,15 +147,25 @@ export interface ClashApiProfile {
   secret: string
 }
 
+export interface ConfigProfile {
+  id: string
+  name: string
+  type: 'local' | 'remote'
+  source: string
+  lastUpdated?: string
+  autoUpdateInterval: number // 小时，0 = 不自动更新
+}
+
 export interface AppConfig {
   clashApis: ClashApiProfile[]
   activeClashApiId: string
   singboxPath: string
-  configPath: string
   workingDir: string
   serviceName: string
   theme: string
   latencyTestUrl: string
   ipv6TestEnabled: boolean
   groupTestUrls: Record<string, string>
+  configProfiles: ConfigProfile[]
+  activeConfigProfileId: string
 }

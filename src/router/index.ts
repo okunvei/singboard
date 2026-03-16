@@ -38,9 +38,13 @@ const router = createRouter({
       component: () => import('@/views/SettingsPage.vue'),
     },
     {
+      path: '/config',
+      name: 'config',
+      component: () => import('@/views/ConfigPage.vue'),
+    },
+    {
       path: '/config-editor',
-      name: 'config-editor',
-      component: () => import('@/views/ConfigEditorPage.vue'),
+      redirect: '/config',
     },
   ],
 })

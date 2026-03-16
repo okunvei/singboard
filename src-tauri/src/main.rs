@@ -28,6 +28,7 @@ fn run_gui() {
             }
         }))
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             singboard_lib::commands::service::service_status,
             singboard_lib::commands::service::service_start,
@@ -41,6 +42,10 @@ fn run_gui() {
             singboard_lib::commands::config::validate_config,
             singboard_lib::commands::config::validate_config_content,
             singboard_lib::commands::config::detect_runtime_files,
+            singboard_lib::commands::config::get_running_config_path,
+            singboard_lib::commands::config::copy_to_running_config,
+            singboard_lib::commands::config::get_remote_config_dir,
+            singboard_lib::commands::config::delete_file,
             singboard_lib::commands::binary::get_singbox_version,
             singboard_lib::commands::srs::srs_match,
             singboard_lib::commands::srs::srs_match_provider,

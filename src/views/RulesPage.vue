@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+
 import { useRulesStore } from '@/stores/rules'
 import { fetchRuleProviders, updateRuleProvider } from '@/api'
 import type { RuleProvider } from '@/types'
 import { getRequestErrorReason } from '@/utils/requestError'
 import { useToastStore } from '@/stores/toast'
 import { useConfigStore } from '@/stores/config'
-import { srsMatchProvider } from '@/bridge/config'
+import { useServiceStore } from '@/stores/service'
+import { srsMatchProvider, getRunningConfigPath } from '@/bridge/config'
 
 const { filteredRules, loading, filterText, loadRules } = useRulesStore()
+const { serviceStatus } = useServiceStore()
+const isRunning = computed(() => serviceStatus.value.state === 'running')
 
 const activeTab = ref<'rules' | 'providers'>('rules')
 
@@ -42,13 +46,19 @@ async function searchInProviders() {
   }
   providerSearching.value = true
   providerSearchDone.value = false
+
+  let configPath = ''
+  try {
+    configPath = await getRunningConfigPath()
+  } catch { }
+
   const results: Record<string, boolean | -1> = {}
   await Promise.allSettled(
     ruleProviders.value.map(async (p) => {
       try {
         results[p.name] = await srsMatchProvider(
           config.value.workingDir ?? '',
-          config.value.configPath ?? '',
+          configPath,
           config.value.singboxPath ?? '',
           p.name,
           q,
@@ -126,13 +136,35 @@ function formatDate(dateStr: string): string {
 }
 
 onMounted(() => {
-  loadRules()
-  loadProviders()
+  if (isRunning.value) {
+    loadRules()
+    loadProviders()
+  }
+})
+
+watch(isRunning, (running) => {
+  if (running) {
+    loadRules()
+    loadProviders()
+  }
 })
 </script>
 
 <template>
   <div class="flex flex-col h-full gap-3">
+    <template v-if="!isRunning">
+      <div class="flex flex-col items-center justify-center flex-1 gap-4 text-base-content/40">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-16 h-16">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
+        </svg>
+        <div class="text-center space-y-1">
+          <p class="text-lg font-medium">服务未启动</p>
+          <p class="text-sm">请先启动 sing-box 服务以查看规则信息</p>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <h1 class="text-xl font-bold shrink-0">规则</h1>
@@ -271,5 +303,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>

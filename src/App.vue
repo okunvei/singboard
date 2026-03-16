@@ -7,7 +7,8 @@ import ToastHost from '@/components/common/ToastHost.vue'
 import { useConfigStore } from '@/stores/config'
 import { useServiceStore } from '@/stores/service'
 import { useProxiesStore } from '@/stores/proxies'
-import { detectRuntimeFiles } from '@/bridge/config'
+import { detectRuntimeFiles, copyToRunningConfig } from '@/bridge/config'
+import { open } from '@tauri-apps/plugin-dialog'
 import { getIPFromIpipnet, getIPFromIpsb } from '@/api/geoip'
 import {
   getWechatLatency,
@@ -24,6 +25,9 @@ const {
   clashApiUrl,
   clashApiSecret,
   setSingleClashApi,
+  addConfigProfile,
+  setActiveConfigProfile,
+  configProfiles,
 } = useConfigStore()
 const { serviceStatus } = useServiceStore()
 const { loadProxies, resumePendingTests } = useProxiesStore()
@@ -40,9 +44,18 @@ const setupForm = ref({
 function hasRequiredPaths() {
   return !!(
     config.value.singboxPath.trim()
-    && config.value.configPath.trim()
     && config.value.workingDir.trim()
   )
+}
+
+async function browseWorkingDir() {
+  const selected = await open({
+    directory: true,
+    defaultPath: setupForm.value.workingDir.trim() || undefined,
+  })
+  if (selected) {
+    setupForm.value.workingDir = selected as string
+  }
 }
 
 function openSetupWizard(partial?: {
@@ -59,21 +72,7 @@ function openSetupWizard(partial?: {
 
 async function initRuntimePaths() {
   if (hasRequiredPaths()) return
-
-  const allUnset = !config.value.singboxPath && !config.value.configPath && !config.value.workingDir
-  if (!allUnset) {
-    openSetupWizard()
-    return
-  }
-
-  try {
-    const detected = await detectRuntimeFiles()
-    openSetupWizard({
-      workingDir: detected.baseDir,
-    })
-  } catch {
-    openSetupWizard()
-  }
+  openSetupWizard()
 }
 
 async function saveSetup() {
@@ -94,17 +93,26 @@ async function saveSetup() {
   setupError.value = ''
   try {
     const detected = await detectRuntimeFiles(workingDir)
-    if (!detected.singboxPath || !detected.configPath) {
-      setupError.value = '未在该目录及子目录中检测到 sing-box 核心或 config.json，请检查目录后重试。'
+    if (!detected.singboxPath) {
+      setupError.value = '未在该目录及子目录中检测到 sing-box 核心，请检查目录后重试。'
       return
     }
 
     updateConfig({
       workingDir: detected.baseDir,
       singboxPath: detected.singboxPath,
-      configPath: detected.configPath,
     })
     setSingleClashApi(apiUrl, apiSecret)
+
+    // 自动创建本地配置并复制到 running-config
+    if (detected.configPath && configProfiles.value.length === 0) {
+      const id = addConfigProfile('默认配置', 'local', detected.configPath)
+      setActiveConfigProfile(id)
+      try {
+        await copyToRunningConfig(detected.configPath)
+      } catch { }
+    }
+
     setupWizardVisible.value = false
   } catch (e: any) {
     setupError.value = e?.message || '自动检测失败，请检查工作目录是否有效。'
@@ -211,12 +219,15 @@ watch(
         <div class="text-sm font-medium text-base-content/70">路径配置</div>
         <div class="form-control">
           <label class="label"><span class="label-text text-xs">工作目录</span></label>
-          <input
-            v-model="setupForm.workingDir"
-            type="text"
-            class="input input-sm input-bordered"
-            placeholder="C:\\sing-box"
-          />
+          <div class="flex gap-2">
+            <input
+              v-model="setupForm.workingDir"
+              type="text"
+              class="input input-sm input-bordered flex-1"
+              placeholder="C:\\sing-box"
+            />
+            <button class="btn btn-sm btn-outline shrink-0" @click="browseWorkingDir">浏览</button>
+          </div>
         </div>
 
         <div class="divider my-1"></div>

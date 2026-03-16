@@ -12,7 +12,8 @@ import {
   uninstallService,
   readServiceErrorLog,
 } from '@/bridge/service'
-import { getSingboxVersion, validateSingboxConfig } from '@/bridge/config'
+import { getSingboxVersion, validateSingboxConfig, getRunningConfigPath } from '@/bridge/config'
+import { open } from '@tauri-apps/plugin-dialog'
 import { patchConfig, fetchConfig } from '@/api'
 
 const {
@@ -183,13 +184,14 @@ async function setMode(mode: string) {
 }
 
 async function validateBeforeStart(): Promise<boolean> {
-  const { singboxPath, configPath } = config.value
-  if (!singboxPath || !configPath) {
-    pushToast({ message: '请先配置 sing-box 路径和配置文件路径', type: 'error' })
+  const { singboxPath, workingDir } = config.value
+  if (!singboxPath) {
+    pushToast({ message: '请先配置 sing-box 路径', type: 'error' })
     return false
   }
   try {
-    await validateSingboxConfig(singboxPath, configPath, config.value.workingDir)
+    const runningConfigPath = await getRunningConfigPath()
+    await validateSingboxConfig(singboxPath, runningConfigPath, workingDir)
     return true
   } catch (e: any) {
     pushToast({ message: '配置文件校验失败:\n' + (e?.message || e), type: 'error' }, 8000)
@@ -241,9 +243,11 @@ async function handleServiceAction(action: string) {
         checkServiceAfterStart()
         break
       case 'stop': await stopService(name); break
-      case 'install':
-        await installService(name, config.value.singboxPath, config.value.configPath, config.value.workingDir)
+      case 'install': {
+        const runningConfigPath = await getRunningConfigPath()
+        await installService(name, config.value.singboxPath, runningConfigPath, config.value.workingDir)
         break
+      }
       case 'uninstall': await uninstallService(name); break
     }
     setTimeout(refresh, 1000)
@@ -251,6 +255,27 @@ async function handleServiceAction(action: string) {
     pushToast({ message: '操作失败: ' + (e?.message || e), type: 'error' }, 6000)
   } finally {
     actionLoading.value = ''
+  }
+}
+
+async function browseSingboxPath() {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: '可执行文件', extensions: ['exe'] }],
+    defaultPath: config.value.workingDir.trim() || undefined,
+  })
+  if (selected) {
+    config.value.singboxPath = selected as string
+  }
+}
+
+async function browseWorkingDir() {
+  const selected = await open({
+    directory: true,
+    defaultPath: config.value.workingDir.trim() || undefined,
+  })
+  if (selected) {
+    config.value.workingDir = selected as string
   }
 }
 
@@ -573,30 +598,27 @@ watch(
       </div>
       <div class="form-control">
         <label class="label"><span class="label-text text-xs">sing-box 可执行文件路径</span></label>
-        <input
-          v-model="config.singboxPath"
-          type="text"
-          class="input input-sm input-bordered"
-          placeholder="C:\sing-box\sing-box.exe"
-        />
-      </div>
-      <div class="form-control">
-        <label class="label"><span class="label-text text-xs">配置文件路径</span></label>
-        <input
-          v-model="config.configPath"
-          type="text"
-          class="input input-sm input-bordered"
-          placeholder="C:\sing-box\config.json"
-        />
+        <div class="flex gap-2">
+          <input
+            v-model="config.singboxPath"
+            type="text"
+            class="input input-sm input-bordered flex-1"
+            placeholder="C:\sing-box\sing-box.exe"
+          />
+          <button class="btn btn-sm btn-outline shrink-0" @click="browseSingboxPath">浏览</button>
+        </div>
       </div>
       <div class="form-control">
         <label class="label"><span class="label-text text-xs">工作目录</span></label>
-        <input
-          v-model="config.workingDir"
-          type="text"
-          class="input input-sm input-bordered"
-          placeholder="留空则使用配置文件所在目录"
-        />
+        <div class="flex gap-2">
+          <input
+            v-model="config.workingDir"
+            type="text"
+            class="input input-sm input-bordered flex-1"
+            placeholder="留空则使用配置文件所在目录"
+          />
+          <button class="btn btn-sm btn-outline shrink-0" @click="browseWorkingDir">浏览</button>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <button class="btn btn-sm btn-ghost" @click="checkVersion">检测版本</button>

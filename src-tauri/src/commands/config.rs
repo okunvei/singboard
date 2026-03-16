@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 const MAX_SCAN_DEPTH: usize = 8;
 
@@ -137,14 +138,18 @@ pub async fn read_config(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn write_config(path: String, content: String) -> Result<(), String> {
-    let backup = format!("{}.bak", path);
-    if Path::new(&path).exists() {
-        let _ = tokio::fs::copy(&path, &backup).await;
-    }
-
     tokio::fs::write(&path, &content)
         .await
         .map_err(|e| format!("Failed to write config: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_file(path: String) -> Result<(), String> {
+    match tokio::fs::remove_file(&path).await {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Failed to delete file: {}", e)),
+    }
 }
 
 #[tauri::command]
@@ -237,4 +242,58 @@ pub async fn validate_config_content(
     .await;
     let _ = tokio::fs::remove_file(&temp_path).await;
     check_result
+}
+
+fn resolve_remote_config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let remote_dir = data_dir.join("Remote Config");
+    if !remote_dir.exists() {
+        std::fs::create_dir_all(&remote_dir)
+            .map_err(|e| format!("Failed to create remote config dir: {}", e))?;
+    }
+    Ok(remote_dir)
+}
+
+#[tauri::command]
+pub async fn get_remote_config_dir(
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let dir = resolve_remote_config_dir(&app)?;
+    Ok(normalize_path_for_client(&dir))
+}
+
+fn resolve_running_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    if !data_dir.exists() {
+        std::fs::create_dir_all(&data_dir)
+            .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    }
+    Ok(data_dir.join("running-config.json"))
+}
+
+#[tauri::command]
+pub async fn get_running_config_path(
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let running_config_path = resolve_running_config_path(&app)?;
+    Ok(normalize_path_for_client(&running_config_path))
+}
+
+#[tauri::command]
+pub async fn copy_to_running_config(
+    app: tauri::AppHandle,
+    source_path: String,
+) -> Result<String, String> {
+    let running_config_path = resolve_running_config_path(&app)?;
+
+    let content = tokio::fs::read_to_string(&source_path)
+        .await
+        .map_err(|e| format!("Failed to read source config: {}", e))?;
+    tokio::fs::write(&running_config_path, &content)
+        .await
+        .map_err(|e| format!("Failed to write running-config.json: {}", e))?;
+
+    Ok(normalize_path_for_client(&running_config_path))
 }

@@ -1,10 +1,14 @@
 import { ref, computed, watch } from 'vue'
-import type { AppConfig, ClashApiProfile } from '@/types'
+import type { AppConfig, ClashApiProfile, ConfigProfile } from '@/types'
 
 const STORAGE_KEY = 'singboard-config'
 
 function createClashApiId(): string {
   return `api_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createConfigProfileId(): string {
+  return `cfg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
 function createClashApiProfile(name: string, url: string, secret: string): ClashApiProfile {
@@ -50,11 +54,42 @@ function normalizeConfig(raw: any): AppConfig {
       ? raw.activeClashApiId
       : clashApis[0].id
 
+  // 配置文件列表
+  const configProfiles: ConfigProfile[] = Array.isArray(raw?.configProfiles)
+    ? raw.configProfiles
+      .filter((item: any) => item && typeof item === 'object' && typeof item.id === 'string')
+      .map((item: any): ConfigProfile => ({
+        id: item.id,
+        name: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : '未命名配置',
+        type: item.type === 'remote' ? 'remote' : 'local',
+        source: typeof item.source === 'string' ? normalizeWindowsPath(item.source) : '',
+        ...(typeof item.lastUpdated === 'string' ? { lastUpdated: item.lastUpdated } : {}),
+        autoUpdateInterval: typeof item.autoUpdateInterval === 'number' && item.autoUpdateInterval >= 0 ? item.autoUpdateInterval : 0,
+      }))
+    : []
+
+  // 迁移兼容：旧 configPath 自动创建本地配置
+  const legacyConfigPath = normalizeWindowsPath(raw?.configPath)
+  if (configProfiles.length === 0 && legacyConfigPath) {
+    configProfiles.push({
+      id: createConfigProfileId(),
+      name: '默认配置',
+      type: 'local',
+      source: legacyConfigPath,
+      autoUpdateInterval: 0,
+    })
+  }
+
+  const activeConfigProfileId =
+    typeof raw?.activeConfigProfileId === 'string'
+    && configProfiles.some((p) => p.id === raw.activeConfigProfileId)
+      ? raw.activeConfigProfileId
+      : configProfiles.length > 0 ? configProfiles[0].id : ''
+
   return {
     clashApis,
     activeClashApiId,
     singboxPath: normalizeWindowsPath(raw?.singboxPath),
-    configPath: normalizeWindowsPath(raw?.configPath),
     workingDir: normalizeWindowsPath(raw?.workingDir),
     serviceName: typeof raw?.serviceName === 'string' && raw.serviceName ? raw.serviceName : 'sing-box',
     theme: typeof raw?.theme === 'string' && raw.theme ? raw.theme : 'light',
@@ -67,6 +102,8 @@ function normalizeConfig(raw: any): AppConfig {
           Object.entries(raw.groupTestUrls as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0)
         )
       : {},
+    configProfiles,
+    activeConfigProfileId,
   }
 }
 
@@ -103,6 +140,12 @@ export function useConfigStore() {
   const clashApiUrl = computed(() => activeClashApi.value?.url ?? '')
   const clashApiSecret = computed(() => activeClashApi.value?.secret ?? '')
   const serviceName = computed(() => config.value.serviceName)
+
+  const configProfiles = computed(() => config.value.configProfiles)
+  const activeConfigProfileId = computed(() => config.value.activeConfigProfileId)
+  const activeConfigProfile = computed(() =>
+    config.value.configProfiles.find((p) => p.id === config.value.activeConfigProfileId),
+  )
 
   function updateConfig(partial: Partial<AppConfig>) {
     config.value = normalizeConfig({ ...config.value, ...partial })
@@ -146,6 +189,47 @@ export function useConfigStore() {
     config.value.activeClashApiId = profile.id
   }
 
+  function addConfigProfile(name: string, type: 'local' | 'remote', source: string, autoUpdateInterval = 0): string {
+    const profile: ConfigProfile = {
+      id: createConfigProfileId(),
+      name,
+      type,
+      source,
+      lastUpdated: new Date().toISOString(),
+      autoUpdateInterval,
+    }
+    config.value.configProfiles.push(profile)
+    return profile.id
+  }
+
+  function removeConfigProfile(id: string): boolean {
+    const index = config.value.configProfiles.findIndex((p) => p.id === id)
+    if (index === -1) return false
+    config.value.configProfiles.splice(index, 1)
+    if (config.value.activeConfigProfileId === id) {
+      config.value.activeConfigProfileId = config.value.configProfiles.length > 0
+        ? config.value.configProfiles[0].id
+        : ''
+    }
+    return true
+  }
+
+  function setActiveConfigProfile(id: string) {
+    if (config.value.configProfiles.some((p) => p.id === id)) {
+      config.value.activeConfigProfileId = id
+    }
+  }
+
+  function updateConfigProfile(id: string, partial: Partial<Omit<ConfigProfile, 'id'>>) {
+    const profile = config.value.configProfiles.find((p) => p.id === id)
+    if (!profile) return
+    if (typeof partial.name === 'string') profile.name = partial.name
+    if (typeof partial.source === 'string') profile.source = partial.source
+    if (typeof partial.type === 'string') profile.type = partial.type
+    if (typeof partial.lastUpdated === 'string') profile.lastUpdated = partial.lastUpdated
+    if (typeof partial.autoUpdateInterval === 'number') profile.autoUpdateInterval = partial.autoUpdateInterval
+  }
+
   return {
     config,
     clashApis,
@@ -154,11 +238,18 @@ export function useConfigStore() {
     clashApiUrl,
     clashApiSecret,
     serviceName,
+    configProfiles,
+    activeConfigProfileId,
+    activeConfigProfile,
     updateConfig,
     setActiveClashApi,
     addClashApi,
     updateActiveClashApi,
     removeClashApi,
     setSingleClashApi,
+    addConfigProfile,
+    removeConfigProfile,
+    setActiveConfigProfile,
+    updateConfigProfile,
   }
 }

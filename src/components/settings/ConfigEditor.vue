@@ -19,6 +19,8 @@ const props = defineProps<{
   workingDir: string
 }>()
 
+const emit = defineEmits<{ saved: [] }>()
+
 const { pushToast } = useToastStore()
 
 const editorContainer = ref<HTMLElement>()
@@ -551,6 +553,7 @@ async function handleSave() {
       savedFullNormalized.value = normalizeRootObject(parsed) ?? ''
       hasChanges.value = false
       pushToast({ message: '配置文件已保存', type: 'info' })
+      emit('saved')
     } else {
       if (!applyEditorChangesToState()) {
         saving.value = false
@@ -571,6 +574,7 @@ async function handleSave() {
       }
       hasChanges.value = false
       pushToast({ message: '配置文件已保存', type: 'info' })
+      emit('saved')
     }
   } catch (e: any) {
     pushToast({ message: '保存失败: ' + (e?.message || e), type: 'error' })
