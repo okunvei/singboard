@@ -1473,7 +1473,8 @@ fn resolve_srs_data(
             parse_saved_binary_content(&saved)
                 .map_err(|e| format!("parse SavedBinary '{}': {}", tag, e))
         })() {
-            Ok(srs_bytes) => return Ok(srs_bytes),
+            Ok(srs_bytes) if srs_bytes.len() >= 4 && &srs_bytes[0..3] == b"SRS" => return Ok(srs_bytes),
+            Ok(_) => last_cache_error = Some(format!("cache.db '{}': invalid SRS content", tag)),
             Err(e) => last_cache_error = Some(e),
         }
     }
