@@ -35,8 +35,6 @@ function getProcess(conn: Connection): string {
 
 function openDetail(conn: Connection) {
   selectedConnection.value = conn
-  const modal = document.getElementById('conn-detail-modal') as HTMLDialogElement
-  modal?.showModal()
 }
 
 function formatChains(chains?: string[]): string {
@@ -45,8 +43,6 @@ function formatChains(chains?: string[]): string {
 }
 
 function closeDetail() {
-  const modal = document.getElementById('conn-detail-modal') as HTMLDialogElement
-  modal?.close()
   selectedConnection.value = null
 }
 
@@ -200,7 +196,7 @@ onMounted(() => {
     </div>
 
     <!-- 连接详情弹窗 -->
-    <dialog id="conn-detail-modal" class="modal">
+    <div class="modal" :class="{ 'modal-visible': selectedConnection }" @click.self="closeDetail">
       <div v-if="selectedConnection" class="modal-box max-w-2xl">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-lg">连接详情</h3>
@@ -277,9 +273,15 @@ onMounted(() => {
           <button class="btn btn-sm" @click="closeDetail">关闭</button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="selectedConnection = null">close</button>
-      </form>
-    </dialog>
+      <div class="modal-backdrop" @click="closeDetail"></div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.modal.modal-visible {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+}
+</style>
