@@ -53,7 +53,7 @@ async function close() {
       <button
         class="btn btn-ghost btn-xs btn-square hover:bg-error hover:text-error-content"
         @click="close"
-        title="关闭到托盘"
+        title="关闭"
       >
         <svg class="w-3.5 h-3.5" viewBox="0 0 12 12">
           <line stroke="currentColor" stroke-width="1.2" x1="2" y1="2" x2="10" y2="10" />

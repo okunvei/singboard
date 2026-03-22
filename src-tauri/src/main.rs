@@ -27,7 +27,12 @@ fn run_gui() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::new()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::all()
+                    .difference(tauri_plugin_window_state::StateFlags::VISIBLE),
+            )
+            .build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             singboard_lib::commands::service::service_status,
@@ -54,9 +59,23 @@ fn run_gui() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                std::process::exit(0);
+        .run(|app, event| {
+            use tauri_plugin_window_state::AppHandleExt;
+            let state_flags = tauri_plugin_window_state::StateFlags::all()
+                .difference(tauri_plugin_window_state::StateFlags::VISIBLE);
+            match event {
+                tauri::RunEvent::WindowEvent {
+                    event:
+                        tauri::WindowEvent::Resized(_)
+                        | tauri::WindowEvent::Moved(_),
+                    ..
+                } => {
+                    let _ = app.save_window_state(state_flags);
+                }
+                tauri::RunEvent::ExitRequested { .. } => {
+                    std::process::exit(0);
+                }
+                _ => {}
             }
         });
 }

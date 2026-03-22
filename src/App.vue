@@ -9,6 +9,7 @@ import { useServiceStore } from '@/stores/service'
 import { useProxiesStore } from '@/stores/proxies'
 import { detectRuntimeFiles, copyToRunningConfig, getRemoteConfigDir } from '@/bridge/config'
 import { open } from '@tauri-apps/plugin-dialog'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getIPFromIpipnet, getIPFromIpsb } from '@/api/geoip'
 import {
   getWechatLatency,
@@ -29,7 +30,7 @@ const {
   setActiveConfigProfile,
   configProfiles,
 } = useConfigStore()
-const { serviceStatus } = useServiceStore()
+const { serviceStatus, ready: serviceReady } = useServiceStore()
 const { loadProxies, resumePendingTests } = useProxiesStore()
 
 const setupWizardVisible = ref(false)
@@ -198,6 +199,8 @@ async function syncActiveConfigToRunning() {
 }
 
 onMounted(async () => {
+  await serviceReady
+  getCurrentWindow().show()
   initRuntimePaths()
   await syncActiveConfigToRunning()
   await loadProxies()

@@ -7,12 +7,19 @@ const serviceStatus = ref<ServiceStatus>({ state: 'unknown' })
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let refCount = 0
 
+let firstPollResolve: (() => void) | null = null
+const firstPollReady = new Promise<void>((resolve) => { firstPollResolve = resolve })
+
 async function poll() {
   const { serviceName } = useConfigStore()
   try {
     serviceStatus.value = await queryServiceStatus(serviceName.value)
   } catch {
     serviceStatus.value = { state: 'unknown' }
+  }
+  if (firstPollResolve) {
+    firstPollResolve()
+    firstPollResolve = null
   }
 }
 
@@ -33,6 +40,7 @@ export function useServiceStore() {
 
   return {
     serviceStatus,
+    ready: firstPollReady,
     refresh: poll,
   }
 }
