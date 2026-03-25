@@ -496,7 +496,6 @@ function switchModule(next: string) {
 
 async function loadConfig() {
   if (!props.configPath) {
-    pushToast({ message: '请先在设置中配置配置文件路径', type: 'error' })
     return
   }
   loading.value = true

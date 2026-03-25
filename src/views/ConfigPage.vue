@@ -339,12 +339,19 @@ async function handleAddRemote() {
         <span class="text-sm text-base-content/60">正在编辑: {{ editingProfileName }}</span>
       </div>
       <ConfigEditor
+        v-if="editingConfigPath"
         class="flex-1 min-h-0"
         :config-path="editingConfigPath"
         :singbox-path="singboxPath"
         :working-dir="workingDir"
         @saved="onConfigSaved"
       />
+      <div
+        v-else
+        class="flex-1 min-h-0 rounded-lg bg-base-200 flex items-center justify-center text-sm text-base-content/60"
+      >
+        正在加载配置路径...
+      </div>
     </template>
 
     <!-- 添加本地配置对话框 -->
