@@ -668,5 +668,20 @@ watch(
         </button>
       </div>
     </div>
+
+    <div class="bg-base-200 rounded-lg p-4 space-y-3">
+      <h2 class="font-semibold text-sm">窗口行为</h2>
+      <div class="form-control">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input
+            type="checkbox"
+            class="toggle toggle-sm toggle-primary"
+            v-model="config.closeToTray"
+          />
+          <span class="label-text text-xs">关闭时隐藏到系统托盘</span>
+          <span class="text-xs text-base-content/40">启用后点击关闭按钮将隐藏窗口而非退出</span>
+        </label>
+      </div>
+    </div>
   </div>
 </template>

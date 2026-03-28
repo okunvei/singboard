@@ -1,5 +1,6 @@
 import { ref, computed, onUnmounted, watch } from 'vue'
 import { createClashWS } from '@/api/websocket'
+import { fetchConfig } from '@/api'
 import { useConfigStore } from './config'
 import type { LogEntry } from '@/types'
 import type ReconnectingWebSocket from 'reconnecting-websocket'
@@ -7,7 +8,7 @@ import type ReconnectingWebSocket from 'reconnecting-websocket'
 const MAX_LOGS = 5000
 
 const logs = ref<LogEntry[]>([])
-const logLevel = ref('info')
+const logLevel = ref('')
 const paused = ref(false)
 const filterText = ref('')
 
@@ -23,9 +24,17 @@ const filteredLogs = computed(() => {
 export function useLogsStore() {
   const { activeClashApiId } = useConfigStore()
 
-  function start() {
+  async function start() {
     if (ws) ws.close()
     logs.value = []
+    if (!logLevel.value) {
+      try {
+        const { data } = await fetchConfig()
+        logLevel.value = data['log-level'] || 'info'
+      } catch {
+        logLevel.value = 'info'
+      }
+    }
     ws = createClashWS('/logs', (data: LogEntry) => {
       if (paused.value) return
       data.time = new Date().toLocaleTimeString()
@@ -54,7 +63,10 @@ export function useLogsStore() {
   const unwatchApi = watch(
     () => activeClashApiId.value,
     () => {
-      if (ws) start()
+      if (ws) {
+        logLevel.value = ''
+        start()
+      }
     },
   )
   onUnmounted(() => {

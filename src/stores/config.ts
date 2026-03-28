@@ -1,4 +1,5 @@
 import { ref, computed, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import type { AppConfig, ClashApiProfile, ConfigProfile } from '@/types'
 
 const STORAGE_KEY = 'singboard-config'
@@ -104,6 +105,7 @@ function normalizeConfig(raw: any): AppConfig {
       : {},
     configProfiles,
     activeConfigProfileId,
+    closeToTray: typeof raw?.closeToTray === 'boolean' ? raw.closeToTray : false,
   }
 }
 
@@ -129,6 +131,12 @@ watch(config, (val) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(val))
   applyTheme(val.theme)
 }, { deep: true })
+
+// 同步 closeToTray 状态到 Rust 后端
+invoke('set_close_to_tray', { enabled: config.value.closeToTray }).catch(() => {})
+watch(() => config.value.closeToTray, (val) => {
+  invoke('set_close_to_tray', { enabled: val }).catch(() => {})
+})
 
 export function useConfigStore() {
   const clashApis = computed(() => config.value.clashApis)

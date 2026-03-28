@@ -1,7 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn set_close_to_tray(enabled: bool) {
+    CLOSE_TO_TRAY.store(enabled, Ordering::Relaxed);
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -18,14 +28,18 @@ fn main() {
     run_gui();
 }
 
+fn show_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 fn run_gui() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // 已有实例运行时，聚焦到已有窗口
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            show_window(app);
         }))
         .plugin(tauri_plugin_window_state::Builder::new()
             .with_state_flags(
@@ -34,7 +48,58 @@ fn run_gui() {
             )
             .build())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+
+            let show = MenuItemBuilder::with_id("show", "打开面板")
+                .build(&app_handle).expect("menu item");
+            let sep = PredefinedMenuItem::separator(&app_handle).expect("separator");
+            let quit = MenuItemBuilder::with_id("quit", "退出")
+                .build(&app_handle).expect("menu item");
+            let menu = MenuBuilder::new(&app_handle)
+                .item(&show)
+                .item(&sep)
+                .item(&quit)
+                .build()
+                .expect("tray menu");
+
+            TrayIconBuilder::with_id("main")
+                .icon(app.default_window_icon().cloned().expect("app icon"))
+                .tooltip("Singboard")
+                .menu(&menu)
+                .on_tray_icon_event(move |_tray, event| {
+                    if let TrayIconEvent::Click { button, button_state, .. } = event {
+                        if matches!((button, button_state), (MouseButton::Left, MouseButtonState::Up)) {
+                            show_window(&app_handle);
+                        }
+                    }
+                })
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "show" => show_window(app),
+                        "quit" => app.exit(0),
+                        _ => {}
+                    }
+                })
+                .build(&app.handle().clone())
+                .expect("tray icon");
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    if CLOSE_TO_TRAY.load(Ordering::Relaxed) {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.app_handle().exit(0);
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            set_close_to_tray,
             singboard_lib::commands::service::service_status,
             singboard_lib::commands::service::service_start,
             singboard_lib::commands::service::service_stop,
@@ -67,16 +132,17 @@ fn run_gui() {
                 .difference(tauri_plugin_window_state::StateFlags::VISIBLE);
             match event {
                 tauri::RunEvent::WindowEvent {
+                    label,
                     event:
                         tauri::WindowEvent::Resized(_)
                         | tauri::WindowEvent::Moved(_),
                     ..
                 } => {
-                    let _ = app.save_window_state(state_flags);
+                    if label == "main" {
+                        let _ = app.save_window_state(state_flags);
+                    }
                 }
-                tauri::RunEvent::ExitRequested { .. } => {
-                    std::process::exit(0);
-                }
+                tauri::RunEvent::ExitRequested { .. } => {}
                 _ => {}
             }
         });

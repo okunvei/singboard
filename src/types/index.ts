@@ -168,4 +168,5 @@ export interface AppConfig {
   groupTestUrls: Record<string, string>
   configProfiles: ConfigProfile[]
   activeConfigProfileId: string
+  closeToTray: boolean
 }
