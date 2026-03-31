@@ -362,18 +362,18 @@ async function checkVersion() {
 const statusColor = computed(() => {
   switch (serviceStatus.value.state) {
     case 'running': return 'badge-success'
-    case 'stopped': return 'badge-error'
+    case 'not_installed': return 'badge-error'
     default: return 'badge-warning'
   }
 })
 
 const statusText = computed(() => {
   const map: Record<string, string> = {
-    running: '运行中',
-    stopped: '已停止',
-    starting: '启动中',
-    stopping: '停止中',
-    not_installed: '未安装',
+    running: '服务运行中',
+    stopped: '服务已安装，未运行',
+    starting: '服务启动中',
+    stopping: '服务停止中',
+    not_installed: '服务未安装，请在下方点击安装服务',
     unknown: '未知',
   }
   return map[serviceStatus.value.state] || '未知'
@@ -409,36 +409,15 @@ watch(
     <ConfirmDialog ref="confirmDialogRef" />
 
     <div class="bg-base-200 rounded-lg p-4 space-y-3">
-      <h2 class="font-semibold text-sm">服务控制</h2>
+      <h2 class="font-semibold text-sm">服务管理</h2>
+      
+      <p class="text-xs">必须安装服务才可以启动运行</p>
       <div class="flex items-center gap-2">
-        <span class="text-sm">状态:</span>
+        <span class="text-sm">当前状态:</span>
         <span class="badge" :class="statusColor">{{ statusText }}</span>
       </div>
+
       <div class="flex gap-2">
-        <button
-          class="btn btn-sm btn-success"
-          :class="{ loading: actionLoading === 'start' }"
-          :disabled="serviceStatus.state === 'running'"
-          @click="handleServiceAction('start')"
-        >
-          启动
-        </button>
-        <button
-          class="btn btn-sm btn-warning"
-          :class="{ loading: actionLoading === 'restart' }"
-          @click="handleServiceAction('restart')"
-        >
-          重启
-        </button>
-        <button
-          class="btn btn-sm btn-error"
-          :class="{ loading: actionLoading === 'stop' }"
-          :disabled="serviceStatus.state === 'stopped'"
-          @click="handleServiceAction('stop')"
-        >
-          停止
-        </button>
-        <div class="divider divider-horizontal"></div>
         <button
           class="btn btn-sm btn-outline"
           :class="{ loading: actionLoading === 'install' }"
@@ -764,5 +743,6 @@ watch(
         </div>
       </div>
     </div>
+
   </div>
 </template>
