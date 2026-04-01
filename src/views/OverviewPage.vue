@@ -64,8 +64,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
+  <div class="flex flex-col h-full overflow-hidden">
+    <div class="sticky top-0 z-10 bg-base-100 pb-4 flex items-center justify-between">
       <h1 class="text-xl font-bold">概览</h1>
       
       <button 
@@ -83,57 +83,59 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div class="grid grid-cols-3 gap-3">
-      <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-1.5">
-        <div class="text-xs text-base-content/60 font-semibold tracking-wider">上传</div>
-        <div class="text-3xl font-extralight tabular-nums">
-          {{ formatSpeed(currentTraffic.up) }}
+    <div class="flex-1 overflow-auto space-y-4 pr-1">
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-1.5">
+          <div class="text-xs text-base-content/60 font-semibold tracking-wider">上传</div>
+          <div class="text-3xl font-extralight tabular-nums">
+            {{ formatSpeed(currentTraffic.up) }}
+          </div>
+          <div class="h-14 mt-1">
+            <SparkLine
+              :data="uploadSpeedHistory"
+              color="#67d4e2"
+              :min="60000"
+              :label-formatter="speedLabelFormatter"
+            />
+          </div>
+          <div class="text-xs text-base-content/50">总计 {{ formatBytes(uploadTotal) }}</div>
         </div>
-        <div class="h-14 mt-1">
-          <SparkLine
-            :data="uploadSpeedHistory"
-            color="#67d4e2"
-            :min="60000"
-            :label-formatter="speedLabelFormatter"
-          />
+        <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-1.5">
+          <div class="text-xs text-base-content/60 font-semibold tracking-wider">下载</div>
+          <div class="text-3xl font-extralight tabular-nums">
+            {{ formatSpeed(currentTraffic.down) }}
+          </div>
+          <div class="h-14 mt-1">
+            <SparkLine
+              :data="downloadSpeedHistory"
+              color="#8b7bf6"
+              :min="60000"
+              :label-formatter="speedLabelFormatter"
+            />
+          </div>
+          <div class="text-xs text-base-content/50">总计 {{ formatBytes(downloadTotal) }}</div>
         </div>
-        <div class="text-xs text-base-content/50">总计 {{ formatBytes(uploadTotal) }}</div>
+        <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-1.5">
+          <div class="text-xs text-base-content/60 font-semibold tracking-wider">
+            连接
+          </div>
+          <div class="text-3xl font-extralight tabular-nums">{{ connections.length }}</div>
+          <div class="h-14 mt-1">
+            <SparkLine
+              :data="connectionsHistory"
+              color="#10b981"
+              :min="10"
+              :label-formatter="connLabelFormatter"
+              :right-margin="24"
+            />
+          </div>
+          <div class="text-xs text-base-content/50">内存使用 {{ memoryUsage }}</div>
+        </div>
       </div>
-      <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-1.5">
-        <div class="text-xs text-base-content/60 font-semibold tracking-wider">下载</div>
-        <div class="text-3xl font-extralight tabular-nums">
-          {{ formatSpeed(currentTraffic.down) }}
-        </div>
-        <div class="h-14 mt-1">
-          <SparkLine
-            :data="downloadSpeedHistory"
-            color="#8b7bf6"
-            :min="60000"
-            :label-formatter="speedLabelFormatter"
-          />
-        </div>
-        <div class="text-xs text-base-content/50">总计 {{ formatBytes(downloadTotal) }}</div>
-      </div>
-      <div class="bg-base-200 rounded-xl p-4 flex flex-col gap-1.5">
-        <div class="text-xs text-base-content/60 font-semibold tracking-wider">
-          连接
-        </div>
-        <div class="text-3xl font-extralight tabular-nums">{{ connections.length }}</div>
-        <div class="h-14 mt-1">
-          <SparkLine
-            :data="connectionsHistory"
-            color="#10b981"
-            :min="10"
-            :label-formatter="connLabelFormatter"
-            :right-margin="24"
-          />
-        </div>
-        <div class="text-xs text-base-content/50">内存使用 {{ memoryUsage }}</div>
-      </div>
+  
+      <NetworkInfo />
+  
+      <TopologyChart />
     </div>
-
-    <NetworkInfo />
-
-    <TopologyChart />
   </div>
 </template>
