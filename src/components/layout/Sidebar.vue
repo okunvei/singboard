@@ -4,10 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { useServiceStore } from '@/stores/service'
 import { useConfigStore } from '@/stores/config'
 import { getSingboxVersion } from '@/bridge/config'
+import { normalizeVersionText } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
-const { serviceStatus } = useServiceStore()
+const { serviceStatus, statusText } = useServiceStore()
 const { config } = useConfigStore()
 const singboxVersion = ref('')
 const versionWrapEl = ref<HTMLElement | null>(null)
@@ -41,27 +42,6 @@ const statusColor = computed(() => {
     default: return 'bg-base-content/30'
   }
 })
-
-const statusText = computed(() => {
-  const map: Record<string, string> = {
-    running: '运行中',
-    stopped: '已停止',
-    starting: '启动中',
-    stopping: '停止中',
-    not_installed: '未安装',
-    unknown: '未知',
-  }
-  return map[serviceStatus.value.state] || '未知'
-})
-
-function normalizeVersionText(raw: string): string {
-  const firstLine = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => !!line) ?? raw.trim()
-
-  return firstLine.replace(/\bversion\b/ig, '').replace(/\s{2,}/g, ' ').trim()
-}
 
 async function refreshVersion() {
   if (serviceStatus.value.state !== 'running') {

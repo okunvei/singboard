@@ -93,15 +93,15 @@ onMounted(() => {
       <table class="table table-xs table-pin-rows">
         <thead>
           <tr class="bg-base-200 border-b border-base-content/20">
-            <th class="sticky left-0 z-20 bg-base-200">主机</th>
-            <th>规则</th>
-            <th>链路</th>
-            <th class="text-right">下载</th>
-            <th class="text-right">上传</th>
-            <th class="text-right">下载速度</th>
-            <th class="text-right">上传速度</th>
-            <th class="text-right">时长</th>
-            <th class="w-8"></th>
+            <th class="z-20 bg-base-200">主机</th>
+            <th class="z-20 bg-base-200">规则</th>
+            <th class="z-20 bg-base-200">链路</th>
+            <th class="z-20 bg-base-200 text-right">下载速度</th>
+            <th class="z-20 bg-base-200 text-right">上传速度</th>
+            <th class="z-20 bg-base-200 text-right">下载</th>
+            <th class="z-20 bg-base-200 text-right">上传</th>
+            <th class="z-20 bg-base-200 text-right">时长</th>
+            <th class="z-20 bg-base-200 w-8"></th>
           </tr>
         </thead>
         <tbody>
@@ -111,7 +111,7 @@ onMounted(() => {
             class="hover:bg-base-200/50 cursor-pointer"
             @click="openDetail(conn)"
           >
-            <td class="sticky left-0 z-10 bg-base-100 whitespace-nowrap" :title="getHost(conn)">
+            <td class="whitespace-nowrap" :title="getHost(conn)">
               <span class="text-xs leading-none px-1.5 py-0.5 rounded mr-1.5 inline-block" :class="conn.metadata.network === 'tcp' ? 'bg-info/15 text-info' : 'bg-accent/15 text-accent'">
                 {{ conn.metadata.network }}
               </span>
@@ -121,10 +121,10 @@ onMounted(() => {
             <td class="text-xs text-base-content/60 max-w-xl truncate" :title="formatChains(conn.chains)">
               {{ formatChains(conn.chains) }}
             </td>
-            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.download) }}</td>
-            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.upload) }}</td>
             <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.downloadSpeed || 0) }}</td>
             <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.uploadSpeed || 0) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.download) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.upload) }}</td>
             <td class="text-right text-xs text-base-content/50 whitespace-nowrap">{{ formatDuration(conn.start) }}</td>
             <td>
               <button
@@ -151,14 +151,14 @@ onMounted(() => {
       <table class="table table-xs table-pin-rows">
         <thead>
           <tr class="bg-base-200 border-b border-base-content/20">
-            <th class="sticky left-0 z-20 bg-base-200">主机</th>
-            <th>规则</th>
-            <th>链路</th>
-            <th class="text-right">下载</th>
-            <th class="text-right">上传</th>
-            <th class="text-right">下载速度</th>
-            <th class="text-right">上传速度</th>
-            <th class="text-right">时长</th>
+            <th class="z-20 bg-base-200">主机</th>
+            <th class="z-20 bg-base-200">规则</th>
+            <th class="z-20 bg-base-200">链路</th>
+            <th class="z-20 bg-base-200 text-right">下载速度</th>
+            <th class="z-20 bg-base-200 text-right">上传速度</th>
+            <th class="z-20 bg-base-200 text-right">下载</th>
+            <th class="z-20 bg-base-200 text-right">上传</th>
+            <th class="z-20 bg-base-200 text-right">时长</th>
           </tr>
         </thead>
         <tbody>
@@ -168,7 +168,7 @@ onMounted(() => {
             class="hover:bg-base-200/50 opacity-60 cursor-pointer"
             @click="openDetail(conn)"
           >
-            <td class="sticky left-0 z-10 bg-base-100 whitespace-nowrap" :title="getHost(conn)">
+            <td class="whitespace-nowrap" :title="getHost(conn)">
               <span class="text-xs leading-none px-1.5 py-0.5 rounded mr-1.5 inline-block" :class="conn.metadata.network === 'tcp' ? 'bg-info/15 text-info' : 'bg-accent/15 text-accent'">
                 {{ conn.metadata.network }}
               </span>
@@ -178,10 +178,10 @@ onMounted(() => {
             <td class="text-xs text-base-content/60 max-w-xl truncate" :title="formatChains(conn.chains)">
               {{ formatChains(conn.chains) }}
             </td>
-            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.download) }}</td>
-            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.upload) }}</td>
             <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.downloadSpeed || 0) }}</td>
             <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatSpeed(conn.uploadSpeed || 0) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.download) }}</td>
+            <td class="text-right text-xs whitespace-nowrap min-w-20">{{ formatBytes(conn.upload) }}</td>
             <td class="text-right text-xs text-base-content/50 whitespace-nowrap">{{ formatDuration(conn.start) }}</td>
           </tr>
         </tbody>

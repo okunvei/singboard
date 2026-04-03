@@ -33,7 +33,7 @@ const setupForm = ref({
   clashApiSecret: '',
 })
 
-function open_() {
+function openWizard() {
   setupForm.value = {
     workingDir: config.value.workingDir ?? '',
     clashApiUrl: clashApiUrl.value || 'http://127.0.0.1:9090',
@@ -105,7 +105,7 @@ function goToSettings() {
 
 function checkAndOpen() {
   if (!(config.value.singboxPath.trim() && config.value.workingDir.trim())) {
-    open_()
+    openWizard()
   }
 }
 

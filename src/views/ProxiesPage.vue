@@ -11,6 +11,7 @@ import type { ProxyProvider } from '@/types'
 import { getRequestErrorReason } from '@/utils/requestError'
 import { useToastStore } from '@/stores/toast'
 import { formatSpeed, formatBytes, formatLatency, formatDate, latencyColor, dotColor } from '@/utils/format'
+import { batchUpdateProviders } from '@/utils/batchUpdate'
 
 const {
   proxyGroups,
@@ -152,16 +153,7 @@ async function handleUpdateProvider(name: string) {
 
 async function handleUpdateAll() {
   updatingAll.value = true
-  const updatable = proxyProviders.value.filter((p) => p.vehicleType !== 'Inline')
-  const results = await Promise.allSettled(updatable.map((p) => updateProxyProvider(p.name)))
-  const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-  if (failed.length > 0) {
-    const reasons = Array.from(new Set(failed.map((result) => getRequestErrorReason(result.reason))))
-    pushToast({
-      type: 'error',
-      message: `部分代理提供商更新失败 (${failed.length}/${updatable.length})\n原因: ${reasons.join('；')}`,
-    })
-  }
+  await batchUpdateProviders(proxyProviders.value, updateProxyProvider, '代理提供商')
   await loadProviders()
   await loadProxies()
   updatingAll.value = false

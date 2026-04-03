@@ -51,3 +51,11 @@ export function dotColor(delay: number): string {
   if (delay < 800) return 'bg-amber-500'
   return 'bg-error'
 }
+
+export function normalizeVersionText(raw: string): string {
+  const firstLine = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => !!line) ?? raw.trim()
+  return firstLine.replace(/\bversion\b/ig, '').replace(/\s{2,}/g, ' ').trim()
+}

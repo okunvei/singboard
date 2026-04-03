@@ -12,6 +12,7 @@ import {
   readServiceErrorLog,
 } from '@/bridge/service'
 import { getSingboxVersion, validateSingboxConfig, getRunningConfigPath, getRemoteConfigPath, copyToRunningConfig } from '@/bridge/config'
+import { normalizeVersionText } from '@/utils/format'
 import { open } from '@tauri-apps/plugin-dialog'
 import { patchConfig, fetchConfig } from '@/api'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -28,7 +29,7 @@ const {
   updateActiveClashApi,
   removeClashApi,
 } = useConfigStore()
-const { serviceStatus, refresh } = useServiceStore()
+const { serviceStatus, statusText, refresh } = useServiceStore()
 const { pushToast } = useToastStore()
 const confirmDialogRef = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 
@@ -92,21 +93,23 @@ const clashModeOptions = ref<string[]>(['Rule'])
 const singboxVersion = ref('')
 const actionLoading = ref('')
 function parseApiUrl(url: string) {
-  const match = url.match(/^(https?):\/\/(.+)$/)
-  if (match) return { protocol: match[1] as 'http' | 'https', host: match[2] }
-  return { protocol: 'http' as const, host: url }
+  const match = url.match(/^(https?):\/\/([^:]+)(?::(\d+))?$/)
+  if (match) return { protocol: match[1] as 'http' | 'https', host: match[2], port: match[3] ?? '' }
+  return { protocol: 'http' as const, host: url, port: '' }
 }
 
 const activeApiForm = ref({
   name: '',
   protocol: 'http' as 'http' | 'https',
   host: '',
+  port: '',
   secret: '',
 })
 const newApiForm = ref({
   name: '',
   protocol: 'http' as 'http' | 'https',
   host: '',
+  port: '',
   secret: '',
 })
 const showEditApiForm = ref(false)
@@ -114,11 +117,12 @@ const showAddApiForm = ref(false)
 
 function syncActiveApiForm() {
   const current = activeClashApi.value
-  const { protocol, host } = parseApiUrl(current?.url ?? '')
+  const { protocol, host, port } = parseApiUrl(current?.url ?? '')
   activeApiForm.value = {
     name: current?.name ?? '',
     protocol,
     host,
+    port,
     secret: current?.secret ?? '',
   }
 }
@@ -134,7 +138,7 @@ function toggleEditApiForm() {
 function toggleAddApiForm() {
   showAddApiForm.value = !showAddApiForm.value
   if (showAddApiForm.value) {
-    newApiForm.value = { name: '', protocol: 'http', host: '', secret: '' }
+    newApiForm.value = { name: '', protocol: 'http', host: '', port: '', secret: '' }
     showEditApiForm.value = false
   }
 }
@@ -152,8 +156,9 @@ function handleSaveActiveApi() {
     pushToast({ message: '请填写当前后端主机地址。', type: 'error' })
     return
   }
+  const port = activeApiForm.value.port.trim()
   const name = activeApiForm.value.name.trim() || '后端'
-  const url = `${activeApiForm.value.protocol}://${host}`
+  const url = `${activeApiForm.value.protocol}://${host}${port ? ':' + port : ''}`
   updateActiveClashApi({
     name,
     url,
@@ -170,12 +175,13 @@ function handleAddApi() {
     pushToast({ message: '请填写新增后端主机地址。', type: 'error' })
     return
   }
+  const port = newApiForm.value.port.trim()
   const name = newApiForm.value.name.trim() || `后端 ${clashApis.value.length + 1}`
-  const url = `${newApiForm.value.protocol}://${host}`
+  const url = `${newApiForm.value.protocol}://${host}${port ? ':' + port : ''}`
   const id = addClashApi(name, url, newApiForm.value.secret)
   setActiveClashApi(id)
   syncActiveApiForm()
-  newApiForm.value = { name: '', protocol: 'http', host: '', secret: '' }
+  newApiForm.value = { name: '', protocol: 'http', host: '', port: '', secret: '' }
   showAddApiForm.value = false
   refresh()
   loadClashConfig()
@@ -349,11 +355,7 @@ async function checkVersion() {
   if (!config.value.singboxPath) return
   try {
     const raw = await getSingboxVersion(config.value.singboxPath)
-    const firstLine = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => !!line) ?? raw.trim()
-    singboxVersion.value = firstLine.replace(/\bversion\b/ig, '').replace(/\s{2,}/g, ' ').trim()
+    singboxVersion.value = normalizeVersionText(raw)
   } catch {
     singboxVersion.value = '获取失败'
   }
@@ -365,18 +367,6 @@ const statusColor = computed(() => {
     case 'stopped': return 'badge-error'
     default: return 'badge-warning'
   }
-})
-
-const statusText = computed(() => {
-  const map: Record<string, string> = {
-    running: '运行中',
-    stopped: '已停止',
-    starting: '启动中',
-    stopping: '停止中',
-    not_installed: '未安装',
-    unknown: '未知',
-  }
-  return map[serviceStatus.value.state] || '未知'
 })
 
 loadClashConfig()
@@ -508,19 +498,21 @@ watch(
           <label class="label"><span class="label-text text-xs">名称</span></label>
           <input v-model="activeApiForm.name" type="text" class="input input-sm input-bordered" placeholder="默认后端" />
         </div>
-        <div class="form-control">
-          <label class="label"><span class="label-text text-xs">主机</span></label>
-          <div class="flex gap-1">
-            <select v-model="activeApiForm.protocol" class="select select-sm select-bordered w-24 shrink-0">
+        <div class="flex gap-2">
+          <div class="form-control w-24 shrink-0">
+            <label class="label"><span class="label-text text-xs">协议</span></label>
+            <select v-model="activeApiForm.protocol" class="select select-sm select-bordered">
               <option value="http">http</option>
               <option value="https">https</option>
             </select>
-            <input
-              v-model="activeApiForm.host"
-              type="text"
-              class="input input-sm input-bordered flex-1"
-              placeholder="127.0.0.1:9090"
-            />
+          </div>
+          <div class="form-control flex-1">
+            <label class="label"><span class="label-text text-xs">主机</span></label>
+            <input v-model="activeApiForm.host" type="text" class="input input-sm input-bordered" placeholder="127.0.0.1" />
+          </div>
+          <div class="form-control w-24 shrink-0">
+            <label class="label"><span class="label-text text-xs">端口</span></label>
+            <input v-model="activeApiForm.port" type="text" class="input input-sm input-bordered" placeholder="9090" />
           </div>
         </div>
         <div class="form-control">
@@ -550,19 +542,21 @@ watch(
           <label class="label"><span class="label-text text-xs">名称</span></label>
           <input v-model="newApiForm.name" type="text" class="input input-sm input-bordered" placeholder="后端 2" />
         </div>
-        <div class="form-control">
-          <label class="label"><span class="label-text text-xs">主机</span></label>
-          <div class="flex gap-1">
-            <select v-model="newApiForm.protocol" class="select select-sm select-bordered w-24 shrink-0">
+        <div class="flex gap-2">
+          <div class="form-control w-24 shrink-0">
+            <label class="label"><span class="label-text text-xs">协议</span></label>
+            <select v-model="newApiForm.protocol" class="select select-sm select-bordered">
               <option value="http">http</option>
               <option value="https">https</option>
             </select>
-            <input
-              v-model="newApiForm.host"
-              type="text"
-              class="input input-sm input-bordered flex-1"
-              placeholder="127.0.0.1:9090"
-            />
+          </div>
+          <div class="form-control flex-1">
+            <label class="label"><span class="label-text text-xs">主机</span></label>
+            <input v-model="newApiForm.host" type="text" class="input input-sm input-bordered" placeholder="127.0.0.1" />
+          </div>
+          <div class="form-control w-24 shrink-0">
+            <label class="label"><span class="label-text text-xs">端口</span></label>
+            <input v-model="newApiForm.port" type="text" class="input input-sm input-bordered" placeholder="9090" />
           </div>
         </div>
         <div class="form-control">
@@ -682,15 +676,14 @@ watch(
         </div>
       </div>
       <div class="form-control">
-        <label class="label cursor-pointer justify-start gap-2">
+        <div class="label justify-start gap-2">
           <input
             type="checkbox"
             class="toggle toggle-sm toggle-primary"
             v-model="config.ipv6TestEnabled"
           />
           <span class="label-text text-xs">IPv6 连通性测试</span>
-          <span class="text-xs text-base-content/40">测速时同时检测节点 IPv6 支持</span>
-        </label>
+        </div>
       </div>
     </div>
 

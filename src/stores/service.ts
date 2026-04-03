@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { queryServiceStatus } from '@/bridge/service'
 import { useConfigStore } from './config'
 import type { ServiceStatus } from '@/types'
@@ -38,8 +38,21 @@ export function useServiceStore() {
     }
   })
 
+  const statusText = computed(() => {
+    const map: Record<string, string> = {
+      running: '运行中',
+      stopped: '已停止',
+      starting: '启动中',
+      stopping: '停止中',
+      not_installed: '未安装',
+      unknown: '未知',
+    }
+    return map[serviceStatus.value.state] || '未知'
+  })
+
   return {
     serviceStatus,
+    statusText,
     ready: firstPollReady,
     refresh: poll,
   }

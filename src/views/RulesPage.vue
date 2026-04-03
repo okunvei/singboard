@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, nextTick } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { useRulesStore } from '@/stores/rules'
 import { fetchRuleProviders, updateRuleProvider } from '@/api'
@@ -8,10 +8,39 @@ import { getRequestErrorReason } from '@/utils/requestError'
 import { useToastStore } from '@/stores/toast'
 import { useConfigStore } from '@/stores/config'
 import { useServiceStore } from '@/stores/service'
+import { useProxiesStore } from '@/stores/proxies'
 import { srsMatchProvider, srsListProvider, getRunningConfigPath } from '@/bridge/config'
+import { latencyColor, formatLatency, formatDate } from '@/utils/format'
+import { batchUpdateProviders } from '@/utils/batchUpdate'
 
 const { filteredRules, loading, filterText, loadRules } = useRulesStore()
 const { serviceStatus } = useServiceStore()
+const { proxyMap, getLatency } = useProxiesStore()
+
+const SPECIAL_ACTIONS = new Set(['sniff', 'hijack-dns', 'resolve', 'resolve(match_only)'])
+
+function resolveProxyChain(name: string): string[] {
+  const chain: string[] = [name]
+  const visited = new Set<string>()
+  let current = name
+  while (true) {
+    if (visited.has(current)) break
+    visited.add(current)
+    const proxy = proxyMap.value[current]
+    if (!proxy?.now || proxy.now === current) break
+    current = proxy.now
+    chain.push(current)
+  }
+  return chain
+}
+
+function actionColor(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes('reject')) return 'bg-error/15 text-error'
+  if (lower === 'direct') return 'bg-success/15 text-success'
+  if (SPECIAL_ACTIONS.has(lower)) return 'bg-base-content/10 text-base-content/60'
+  return 'bg-primary/15 text-primary'
+}
 const isRunning = computed(() => serviceStatus.value.state === 'running')
 
 const activeTab = ref<'rules' | 'providers'>('rules')
@@ -111,16 +140,7 @@ async function handleUpdateProvider(name: string) {
 
 async function handleUpdateAll() {
   updatingAll.value = true
-  const updatable = ruleProviders.value.filter((p) => p.vehicleType !== 'Inline')
-  const results = await Promise.allSettled(updatable.map((p) => updateRuleProvider(p.name)))
-  const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-  if (failed.length > 0) {
-    const reasons = Array.from(new Set(failed.map((result) => getRequestErrorReason(result.reason))))
-    pushToast({
-      type: 'error',
-      message: `部分规则提供商更新失败 (${failed.length}/${updatable.length})\n原因: ${reasons.join('；')}`,
-    })
-  }
+  await batchUpdateProviders(ruleProviders.value, updateRuleProvider, '规则提供商')
   await loadProviders()
   await loadRules()
   updatingAll.value = false
@@ -296,15 +316,6 @@ function closeProviderDetail() {
   if (filterTimer) { clearTimeout(filterTimer); filterTimer = null }
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return ''
-  const diff = Date.now() - new Date(dateStr).getTime()
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前'
-  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前'
-  return Math.floor(diff / 86400000) + ' 天前'
-}
-
 onMounted(() => {
   if (isRunning.value) {
     loadRules()
@@ -366,28 +377,30 @@ watch(isRunning, (running) => {
       />
 
       <div class="flex-1 overflow-auto">
-        <table class="table table-xs table-pin-rows">
-          <thead>
-            <tr class="bg-base-200">
-              <th class="w-8">#</th>
-              <th>类型</th>
-              <th>匹配内容</th>
-              <th>代理</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(rule, i) in filteredRules" :key="i" class="hover:bg-base-200/50">
-              <td class="text-base-content/30">{{ i + 1 }}</td>
-              <td>
-                <span class="text-xs leading-none px-1.5 py-0.5 rounded bg-base-content/10 text-base-content/60">{{ rule.type }}</span>
-              </td>
-              <td class="max-w-[300px] truncate text-xs" :title="rule.payload">
-                {{ rule.payload }}
-              </td>
-              <td class="text-xs text-primary">{{ rule.proxy }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="space-y-0.5">
+          <div
+            v-for="(rule, i) in filteredRules"
+            :key="i"
+            class="grid grid-cols-[1.25rem_1fr] gap-x-1.5 px-3 py-1.5 hover:bg-base-200/50 rounded text-xs"
+          >
+            <span class="text-base-content/30 tabular-nums text-right row-span-2 pt-0.5">{{ i + 1 }}</span>
+            <div class="flex items-baseline gap-1.5 min-w-0">
+              <span class="leading-none px-1.5 py-0.5 rounded bg-base-content/10 text-base-content/60 shrink-0">{{ rule.type }}</span>
+              <span v-if="rule.payload" class="text-base-content/50 truncate" :title="rule.payload">{{ rule.payload }}</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <template v-for="(node, j) in resolveProxyChain(rule.proxy)" :key="j">
+                <span v-if="j > 0" class="text-base-content/20 text-xs">›</span>
+                <span class="text-xs leading-none px-1.5 py-0.5 rounded" :class="actionColor(node)">{{ node }}</span>
+              </template>
+              <span
+                v-if="getLatency(resolveProxyChain(rule.proxy).slice(-1)[0]) > 0"
+                class="text-xs leading-none px-1.5 py-0.5 rounded"
+                :class="latencyColor(getLatency(resolveProxyChain(rule.proxy).slice(-1)[0]))"
+              >{{ getLatency(resolveProxyChain(rule.proxy).slice(-1)[0]) }}</span>
+            </div>
+          </div>
+        </div>
 
         <div v-if="loading" class="flex justify-center py-10">
           <span class="loading loading-spinner loading-md"></span>
