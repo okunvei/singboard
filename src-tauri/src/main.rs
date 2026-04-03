@@ -132,6 +132,7 @@ fn run_gui() {
             singboard_lib::commands::srs::srs_list_provider,
             singboard_lib::commands::network::fetch_url,
             singboard_lib::commands::network::http_ping,
+            singboard_lib::commands::network::set_self_proxy,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

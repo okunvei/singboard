@@ -730,5 +730,22 @@ watch(
         </div>
       </div>
     </div>
+
+    <div class="bg-base-200 rounded-lg p-4 space-y-3">
+      <h2 class="font-semibold text-sm">自身代理</h2>
+      <div class="form-control">
+        <label class="label"><span class="label-text text-xs">代理地址 (HTTP/SOCKS5)</span></label>
+        <input
+          v-model="config.selfProxy"
+          type="text"
+          class="input input-sm input-bordered"
+          placeholder="例如: socks5://127.0.0.1:1080"
+        />
+        <label class="label">
+          <span class="label-text-alt text-base-content/40 text-xs">如果内容为空则不配置代理</span>
+        </label>
+      </div>
+    </div>
+
   </div>
 </template>
