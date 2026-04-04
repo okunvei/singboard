@@ -52,34 +52,6 @@ const selectingId = ref('')
 const updatingId = ref('')
 const deletingId = ref('')
 
-// 自动更新定时器
-const autoUpdateTimers = new Map<string, ReturnType<typeof setInterval>>()
-
-function setupAutoUpdateTimers() {
-  // 清除旧定时器
-  for (const timer of autoUpdateTimers.values()) clearInterval(timer)
-  autoUpdateTimers.clear()
-
-  for (const profile of configProfiles.value) {
-    if (profile.type !== 'remote' || profile.autoUpdateInterval <= 0) continue
-    const timer = setInterval(() => {
-      updateRemoteProfile(profile.id)
-    }, profile.autoUpdateInterval * 3600_000)
-    autoUpdateTimers.set(profile.id, timer)
-  }
-}
-
-onMounted(() => {
-  setupAutoUpdateTimers()
-})
-
-onUnmounted(() => {
-  for (const timer of autoUpdateTimers.values()) clearInterval(timer)
-  autoUpdateTimers.clear()
-})
-
-watch(configProfiles, setupAutoUpdateTimers, { deep: true })
-
 async function getProfileConfigPath(profile: ConfigProfile): Promise<string> {
   if (profile.type === 'local') return profile.source
   return await getRemoteConfigPath(profile.id)
