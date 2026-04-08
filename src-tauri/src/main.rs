@@ -2,6 +2,7 @@
 
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -33,6 +34,7 @@ fn show_window(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+        let _ = window.emit("window-visibility", true);
     }
 }
 
@@ -91,6 +93,7 @@ fn run_gui() {
                 if window.label() == "main" {
                     if CLOSE_TO_TRAY.load(Ordering::Relaxed) {
                         api.prevent_close();
+                        let _ = window.emit("window-visibility", false);
                         let _ = window.hide();
                     } else {
                         let _ = window.app_handle().exit(0);

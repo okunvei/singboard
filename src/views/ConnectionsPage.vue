@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useConnectionsStore } from '@/stores/connections'
 import { formatBytes, formatSpeed, formatDuration } from '@/utils/format'
 import type { Connection } from '@/types'
@@ -19,6 +19,57 @@ const {
 
 const activeTab = ref<'active' | 'closed'>('active')
 const selectedConnection = ref<Connection | null>(null)
+
+// Sort state: cycles none → asc → desc → none
+type SortDir = 'none' | 'asc' | 'desc'
+type SortKey = 'host' | 'rule' | 'chains' | 'dlSpeed' | 'ulSpeed' | 'dl' | 'ul' | 'duration'
+const sortKey = ref<SortKey>('host')
+const sortDir = ref<SortDir>('none')
+
+function toggleSort(key: SortKey) {
+  if (sortKey.value !== key) {
+    sortKey.value = key
+    sortDir.value = 'asc'
+  } else if (sortDir.value === 'none') {
+    sortDir.value = 'asc'
+  } else if (sortDir.value === 'asc') {
+    sortDir.value = 'desc'
+  } else {
+    sortDir.value = 'none'
+  }
+}
+
+function sortIcon(key: SortKey): string {
+  if (sortKey.value !== key || sortDir.value === 'none') return ''
+  return sortDir.value === 'asc' ? ' ↑' : ' ↓'
+}
+
+function connSortValue(conn: Connection, key: SortKey): string | number {
+  switch (key) {
+    case 'host': return getHost(conn).toLowerCase()
+    case 'rule': return (conn.rule ?? '').toLowerCase()
+    case 'chains': return formatChains(conn.chains).toLowerCase()
+    case 'dlSpeed': return conn.downloadSpeed ?? 0
+    case 'ulSpeed': return conn.uploadSpeed ?? 0
+    case 'dl': return conn.download ?? 0
+    case 'ul': return conn.upload ?? 0
+    case 'duration': return new Date(conn.start).getTime()
+  }
+}
+
+function sortConnections(list: Connection[]): Connection[] {
+  if (sortDir.value === 'none') return list
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  return [...list].sort((a, b) => {
+    const va = connSortValue(a, sortKey.value)
+    const vb = connSortValue(b, sortKey.value)
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
+    return String(va).localeCompare(String(vb)) * dir
+  })
+}
+
+const sortedActiveConnections = computed(() => sortConnections(filteredConnections.value))
+const sortedClosedConnections = computed(() => sortConnections(filteredClosedConnections.value))
 
 function getHost(conn: any): string {
   const m = conn.metadata
@@ -93,20 +144,20 @@ onMounted(() => {
       <table class="table table-xs table-pin-rows">
         <thead>
           <tr class="bg-base-200 border-b border-base-content/20">
-            <th class="z-20 bg-base-200">主机</th>
-            <th class="z-20 bg-base-200">规则</th>
-            <th class="z-20 bg-base-200">链路</th>
-            <th class="z-20 bg-base-200 text-right">下载速度</th>
-            <th class="z-20 bg-base-200 text-right">上传速度</th>
-            <th class="z-20 bg-base-200 text-right">下载</th>
-            <th class="z-20 bg-base-200 text-right">上传</th>
-            <th class="z-20 bg-base-200 text-right">时长</th>
+            <th class="z-20 bg-base-200 cursor-pointer select-none hover:text-primary" @click="toggleSort('host')">主机{{ sortIcon('host') }}</th>
+            <th class="z-20 bg-base-200 cursor-pointer select-none hover:text-primary" @click="toggleSort('rule')">规则{{ sortIcon('rule') }}</th>
+            <th class="z-20 bg-base-200 cursor-pointer select-none hover:text-primary" @click="toggleSort('chains')">链路{{ sortIcon('chains') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('dlSpeed')">下载速度{{ sortIcon('dlSpeed') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('ulSpeed')">上传速度{{ sortIcon('ulSpeed') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('dl')">下载{{ sortIcon('dl') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('ul')">上传{{ sortIcon('ul') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('duration')">时长{{ sortIcon('duration') }}</th>
             <th class="z-20 bg-base-200 w-8"></th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="conn in filteredConnections"
+            v-for="conn in sortedActiveConnections"
             :key="conn.id"
             class="hover:bg-base-200/50 cursor-pointer"
             @click="openDetail(conn)"
@@ -151,19 +202,19 @@ onMounted(() => {
       <table class="table table-xs table-pin-rows">
         <thead>
           <tr class="bg-base-200 border-b border-base-content/20">
-            <th class="z-20 bg-base-200">主机</th>
-            <th class="z-20 bg-base-200">规则</th>
-            <th class="z-20 bg-base-200">链路</th>
-            <th class="z-20 bg-base-200 text-right">下载速度</th>
-            <th class="z-20 bg-base-200 text-right">上传速度</th>
-            <th class="z-20 bg-base-200 text-right">下载</th>
-            <th class="z-20 bg-base-200 text-right">上传</th>
-            <th class="z-20 bg-base-200 text-right">时长</th>
+            <th class="z-20 bg-base-200 cursor-pointer select-none hover:text-primary" @click="toggleSort('host')">主机{{ sortIcon('host') }}</th>
+            <th class="z-20 bg-base-200 cursor-pointer select-none hover:text-primary" @click="toggleSort('rule')">规则{{ sortIcon('rule') }}</th>
+            <th class="z-20 bg-base-200 cursor-pointer select-none hover:text-primary" @click="toggleSort('chains')">链路{{ sortIcon('chains') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('dlSpeed')">下载速度{{ sortIcon('dlSpeed') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('ulSpeed')">上传速度{{ sortIcon('ulSpeed') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('dl')">下载{{ sortIcon('dl') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('ul')">上传{{ sortIcon('ul') }}</th>
+            <th class="z-20 bg-base-200 text-right cursor-pointer select-none hover:text-primary" @click="toggleSort('duration')">时长{{ sortIcon('duration') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="conn in filteredClosedConnections"
+            v-for="conn in sortedClosedConnections"
             :key="conn.id"
             class="hover:bg-base-200/50 opacity-60 cursor-pointer"
             @click="openDetail(conn)"

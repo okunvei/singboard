@@ -2,6 +2,7 @@ import { ref, computed, onUnmounted, watch } from 'vue'
 import { createClashWS } from '@/api/websocket'
 import { disconnectAll, disconnectById } from '@/api'
 import { useConfigStore } from './config'
+import { appVisible } from './appVisible'
 import { pushConnectionCount } from './overview'
 import type { Connection, ConnectionsSnapshot } from '@/types'
 import type ReconnectingWebSocket from 'reconnecting-websocket'
@@ -94,8 +95,16 @@ export function useConnectionsStore() {
       }
     },
   )
+  const unwatchVisible = watch(appVisible, (visible) => {
+    if (visible) {
+      if (!ws && refCount > 0) start()
+    } else {
+      if (ws) stop()
+    }
+  })
   onUnmounted(() => {
     unwatchApi()
+    unwatchVisible()
     refCount--
     if (refCount === 0) stop()
   })

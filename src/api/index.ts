@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useConfigStore } from '@/stores/config'
 import type {
+  Proxy,
   ProxiesData,
   RulesData,
   ClashConfig,
@@ -22,6 +23,8 @@ api.interceptors.request.use((cfg) => {
 })
 
 export const fetchProxies = () => api.get<ProxiesData>('/proxies')
+export const fetchProxy = (name: string) =>
+  api.get<Proxy>(`/proxies/${encodeURIComponent(name)}`)
 export const selectProxy = (group: string, name: string) =>
   api.put(`/proxies/${encodeURIComponent(group)}`, { name })
 export const testLatency = (name: string, url: string, timeout: number) =>

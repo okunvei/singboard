@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { fetchProxies, fetchProxyProviders, selectProxy, testLatency, testGroupLatency } from '@/api'
+import { fetchProxies, fetchProxy, fetchProxyProviders, selectProxy, testLatency, testGroupLatency } from '@/api'
 import { useConfigStore } from '@/stores/config'
 import type { LatencyHistory, Proxy, ProxyGroup, ProxyProvider } from '@/types'
 
@@ -455,12 +455,30 @@ export function useProxiesStore() {
     return ipv6Map.value[nowNode] === true || ipv6Map.value[name] === true
   }
 
+  async function pollAutoGroups() {
+    const autoTypes = ['fallback', 'urltest']
+    const autoGroups = proxyGroups.value.filter(g =>
+      autoTypes.includes(g.type.toLowerCase())
+    )
+
+    for (const group of autoGroups) {
+      try {
+        const { data } = await fetchProxy(group.name)
+        if (data.now && data.now !== proxyMap.value[group.name]?.now) {
+          proxyMap.value[group.name].now = data.now
+          testGroupNodes(group.name)
+        }
+      } catch {}
+    }
+  }
+
   return {
     proxyMap,
     proxyGroups,
     loading,
     loadProxies,
     switchProxy,
+    pollAutoGroups,
     testNodeLatency,
     testGroupNodes,
     testAllNodes,
