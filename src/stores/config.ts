@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppConfig, ClashApiProfile, ConfigProfile } from '@/types'
-import { fetchUrl, writeSingboxConfig, getRemoteConfigPath, validateSingboxConfig, copyToRunningConfig } from '@/bridge/config'
+import { fetchUrl, writeSingboxConfig, getRemoteConfigPath, validateSingboxConfig, validateSingboxConfigContent, copyToRunningConfig } from '@/bridge/config'
 import { useToastStore } from '@/stores/toast'
 
 const autoUpdateTimers = new Map<string, ReturnType<typeof setInterval>>()
@@ -150,35 +150,36 @@ watch(() => config.value.selfProxy, (val) => {
   invoke('set_self_proxy', { proxy: val }).catch(() => {})
 })
 
-// 核心逻辑移到外部：变成“后台服务”
+// 核心逻辑移到外部：变成“后台服务”，增加临时校验环节
 async function performUpdate(id: string) {
   const profile = config.value.configProfiles.find(p => p.id === id)
   if (!profile || profile.type !== 'remote') return
-
-  // 在函数内部获取 toast，避免初始化顺序错误
   const { pushToast } = useToastStore()
-
   try {
     console.log(`[AutoUpdate] 正在执行: ${profile.name}`)
     const content = await fetchUrl(profile.source)
     const destPath = await getRemoteConfigPath(profile.id)
-    await writeSingboxConfig(destPath, content)
-    
-    // 直接操作全局的 config ref
-    profile.lastUpdated = new Date().toISOString()
 
+    // ✅ 先用 sing-box check 校验拉取到的内容，通过后才写入文件
+    const sp = config.value.singboxPath
+    const wd = config.value.workingDir
+    if (sp) {
+      await validateSingboxConfigContent(sp, destPath, content, wd)
+    }
+
+    // ✅ 校验通过，才允许覆盖写入
+    await writeSingboxConfig(destPath, content)
+
+    profile.lastUpdated = new Date().toISOString()
     if (id === config.value.activeConfigProfileId) {
-      const sp = config.value.singboxPath
-      const wd = config.value.workingDir
       if (sp) {
-        await validateSingboxConfig(sp, destPath, wd)
         await copyToRunningConfig(destPath)
       }
     }
-    pushToast({ message: `自动更新成功: ${profile.name}`, type: 'info' })
+    pushToast({ message: `更新成功: ${profile.name}`, type: 'info' })
   } catch (e: any) {
     console.error(`[AutoUpdate] 失败:`, e)
-    pushToast({ message: `自动更新失败: ${profile.name}`, type: 'error' })
+    pushToast({ message: `更新失败: ${profile.name}`, type: 'error' })
   }
 }
 

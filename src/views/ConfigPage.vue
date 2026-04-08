@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { useToastStore } from '@/stores/toast'
-import { copyToRunningConfig, writeSingboxConfig, fetchUrl, validateSingboxConfig, getRemoteConfigPath, deleteFile } from '@/bridge/config'
+import { copyToRunningConfig, writeSingboxConfig, fetchUrl, validateSingboxConfig, validateSingboxConfigContent, getRemoteConfigPath, deleteFile } from '@/bridge/config'
 import { open } from '@tauri-apps/plugin-dialog'
 import ConfigEditor from '@/components/settings/ConfigEditor.vue'
 import ConfigProfileCard from '@/components/config/ConfigProfileCard.vue'
@@ -17,6 +17,7 @@ const {
   removeConfigProfile,
   setActiveConfigProfile,
   updateConfigProfile,
+  manualUpdateRemote,
 } = useConfigStore()
 const { pushToast } = useToastStore()
 const confirmDialogRef = ref<InstanceType<typeof ConfirmDialog> | null>(null)
@@ -144,27 +145,9 @@ async function deleteProfile(id: string) {
 }
 
 async function updateRemoteProfile(id: string) {
-  const profile = configProfiles.value.find((p) => p.id === id)
-  if (!profile || profile.type !== 'remote') return
-
   updatingId.value = id
   try {
-    const content = await fetchUrl(profile.source)
-    const destPath = await getProfileConfigPath(profile)
-    await writeSingboxConfig(destPath, content)
-    updateConfigProfile(id, { lastUpdated: new Date().toISOString() })
-
-    // 如果是激活配置，校验后重新复制到 running-config
-    if (id === activeConfigProfileId.value) {
-      const ok = await validateAndCopyToRunning(destPath)
-      if (ok) {
-        pushToast({ message: `远程配置「${profile.name}」已更新`, type: 'info' })
-      }
-    } else {
-      pushToast({ message: `远程配置「${profile.name}」已更新`, type: 'info' })
-    }
-  } catch (e: any) {
-    pushToast({ message: '更新远程配置失败: ' + (e?.message || e), type: 'error' })
+    await manualUpdateRemote(id)
   } finally {
     updatingId.value = ''
   }
