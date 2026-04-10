@@ -1,14 +1,33 @@
 use reqwest;
 use std::time::{Duration, Instant};
 use std::sync::Mutex;
-use lazy_static::lazy_static; // 注意：如果报错，请看下方说明
+use lazy_static::lazy_static;
+use sysproxy::Sysproxy; // 引入系统代理获取工具
 
-// 1. 创建一个全局的“代理盒子”，让所有网络函数都能读取
 lazy_static! {
     static ref SELF_PROXY: Mutex<String> = Mutex::new(String::new());
 }
 
-// 2. 接收前端发来的代理设置并存入盒子
+// 辅助函数：根据优先级获取当前应使用的代理
+fn get_effective_proxy() -> Option<reqwest::Proxy> {
+    // 1. 最高优先级：检查软件自身设置的代理
+    let self_p = SELF_PROXY.lock().unwrap().clone();
+    if !self_p.is_empty() {
+        return reqwest::Proxy::all(&self_p).ok();
+    }
+
+    // 2. 中等优先级：检查 Windows 系统代理
+    if let Ok(sys) = Sysproxy::get_system_proxy() {
+        if sys.enable && !sys.host.is_empty() {
+            let proxy_url = format!("http://{}:{}", sys.host, sys.port);
+            return reqwest::Proxy::all(proxy_url).ok();
+        }
+    }
+
+    // 3. 最低优先级：直连
+    None
+}
+
 #[tauri::command]
 pub fn set_self_proxy(proxy: String) {
     let mut p = SELF_PROXY.lock().unwrap();
@@ -18,18 +37,13 @@ pub fn set_self_proxy(proxy: String) {
 
 #[tauri::command]
 pub async fn fetch_url(url: String) -> Result<String, String> {
-    // 3. 在发起请求前，先看看盒子里有没有代理地址
-    let proxy_str = SELF_PROXY.lock().unwrap().clone();
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        // 伪装成 Chrome 浏览器，防止被订阅服务器拒绝
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-    // 如果填了代理，就给请求客户端装上代理
-    if !proxy_str.is_empty() {
-        if let Ok(proxy) = reqwest::Proxy::all(&proxy_str) {
-            builder = builder.proxy(proxy);
-        }
+    // 应用优先级逻辑
+    if let Some(proxy) = get_effective_proxy() {
+        builder = builder.proxy(proxy);
     }
 
     let client = builder.build().map_err(|e| e.to_string())?;
@@ -39,15 +53,12 @@ pub async fn fetch_url(url: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn http_ping(url: String, count: u32) -> Result<f64, String> {
-    let proxy_str = SELF_PROXY.lock().unwrap().clone();
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(5));
 
-    // 测速同样应用代理，否则测出来的延迟是不准的
-    if !proxy_str.is_empty() {
-        if let Ok(proxy) = reqwest::Proxy::all(&proxy_str) {
-            builder = builder.proxy(proxy);
-        }
+    // 应用优先级逻辑
+    if let Some(proxy) = get_effective_proxy() {
+        builder = builder.proxy(proxy);
     }
 
     let client = builder.build().map_err(|e| e.to_string())?;
