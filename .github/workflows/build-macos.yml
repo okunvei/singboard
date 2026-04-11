@@ -144,10 +144,11 @@ jobs:
             | `Singboard-macos-x86_64-*.zip` | Intel Mac |
 
             ### 使用说明
-            1. 根据机型下载对应 zip，解压后将 `Singboard.app` 拖入应用程序文件夹
-            2. 前往 [sing-box releases](https://github.com/SagerNet/sing-box/releases) 下载对应架构内核（arm64 或 amd64）
-            3. 解压后改名为 `sing-box`，放入工作目录（与 `config.json` 同级）
-            4. 首次启动核心时会弹出一次管理员密码框（用于安装特权 Helper），之后无需再次输入
+            1. 【重要】sing-box 的配置文件，必须在 experimental 中配置 clash_api ，否则会运行异常。
+            2. 根据机型下载对应 zip，解压后将 `Singboard.app` 拖入应用程序文件夹
+            3. 前往 [sing-box releases](https://github.com/SagerNet/sing-box/releases) 下载对应架构内核（arm64 或 amd64）
+            4. 解压后改名为 `sing-box`，放入工作目录（与 `config.json` 同级）
+            5. 首次启动核心时会弹出一次管理员密码框（用于安装特权 Helper），之后无需再次输入
           files: release-assets/*.zip
           draft: false
           prerelease: false
