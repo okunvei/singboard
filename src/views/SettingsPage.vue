@@ -734,7 +734,7 @@ watch(
             class="toggle toggle-sm toggle-primary"
             v-model="config.closeToTray"
           />
-          <span class="label-text text-xs">关闭时隐藏到系统托盘</span>
+          <span class="label-text text-xs">关闭时隐藏到顶部系统菜单栏</span>
 
         </div>
       </div>

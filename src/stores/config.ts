@@ -110,7 +110,7 @@ function normalizeConfig(raw: any): AppConfig {
       : {},
     configProfiles,
     activeConfigProfileId,
-    closeToTray: typeof raw?.closeToTray === 'boolean' ? raw.closeToTray : false,
+    closeToTray: typeof raw?.closeToTray === 'boolean' ? raw.closeToTray : true,
     selfProxy: typeof raw?.selfProxy === 'string' ? raw.selfProxy : '',
   }
 }

@@ -9,11 +9,11 @@
 1. 前往 [sing-box releases](https://github.com/SagerNet/sing-box/releases) 下载最新版 macOS 二进制文件
 
    - Apple Silicon（M 系列芯片）：选择 `sing-box-*-darwin-arm64.tar.gz`
-   - Intel Mac：选择 `sing-box-*-darwin-amd64.tar.gz`
+   - Intel Mac：选择 `sing-box-*-darwin-amd64.tar.gz` 或 `sing-box-*-darwin-amd64-legacy-macos-10.13.tar.gz` （未测试，不确定是否能正常工作）
 
 2. 解压后将二进制文件**改名为 `sing-box`**（去掉版本号后缀），放到您的工作目录（与 `config.json` 同级即可）
 
-   > `.tar.gz` 包内的二进制文件已携带可执行权限，解压后无需再执行 `chmod +x`。
+   > `.tar.gz` 包内的二进制文件可能已携带可执行权限，解压后无需再执行 `chmod +x`。
 
 3. 由于 macOS Gatekeeper，首次运行可能需要在「系统设置 → 隐私与安全性」中手动点击「仍要允许」
 
