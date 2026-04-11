@@ -72,6 +72,8 @@ function sortConnections(list: Connection[]): Connection[] {
 const sortedActiveConnections = computed(() => sortConnections(filteredConnections.value))
 const sortedClosedConnections = computed(() => sortConnections(filteredClosedConnections.value))
 
+
+
 function getHost(conn: any): string {
   const m = conn.metadata
   return m.host || m.destinationIP || '-'
@@ -97,6 +99,7 @@ function formatChains(chains?: string[]): string {
 function closeDetail() {
   selectedConnection.value = null
 }
+
 
 function isIPAddress(str: string): boolean {
   return /^[\d.]+$/.test(str) || str.includes(':')

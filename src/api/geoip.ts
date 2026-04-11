@@ -24,6 +24,7 @@ export async function getIPFromIpipnet() {
   return { ip, location }
 }
 
+
 export interface IPGeoInfo {
   ip: string
   asn: number | null
