@@ -2,6 +2,13 @@
 
 感谢原作者开源的优秀项目，现适配给 MacOS。
 
+<p>
+  <img src="./imgs/ScreenShot_2026-04-11_184012_250.png" width="49%"/>
+  <img src="./imgs/ScreenShot_2026-04-11_184136_846.png" width="49%"/>
+  <img src="./imgs/ScreenShot_2026-04-11_184201_837.png" width="49%"/>
+  <img src="./imgs/ScreenShot_2026-04-11_184213_317.png" width="49%"/>
+</p>
+
 ## 使用前提
 
 在运行本程序前，您需要手动下载 macOS 版 sing-box 内核并放置到工作目录：
