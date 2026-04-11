@@ -127,6 +127,9 @@ function appendProxyHistory(name: string, delay: number, time = new Date().toISO
     proxy.history = []
   }
   proxy.history.push({ time, delay })
+  if (proxy.history.length > 10) {
+    proxy.history = proxy.history.slice(-10)
+  }
   persistLatencyHistoryMap()
 }
 
@@ -307,44 +310,47 @@ export function useProxiesStore() {
     const type = group.type.toLowerCase()
     const url = getTestUrl(groupName)
 
-    if (config.value.ipv6TestEnabled) {
-      testGroupLatency(groupName, IPV6_TEST_URL, IPV6_TEST_TIMEOUT)
-        .then(({ data }) => {
-          const results = data as Record<string, number>
-          for (const [name, delay] of Object.entries(results)) {
-            ipv6Map.value[resolveNowNodeName(name)] = delay > 0
-          }
-          saveIPv6Map()
-        })
-        .catch(() => {
-          for (const name of group.all!) {
-            ipv6Map.value[resolveNowNodeName(name)] = false
-          }
-          saveIPv6Map()
-        })
-    }
-
     if (['selector', 'loadbalance', 'smart'].includes(type)) {
       const nodes = [...group.all]
-      const FAST_TIMEOUT = Math.min(1500, LATENCY_TIMEOUT)
       const run = async () => {
         while (nodes.length > 0) {
           const name = nodes.shift()!
           const now = new Date().toISOString()
           try {
-            const { data } = await testLatency(name, url, FAST_TIMEOUT)
+            const { data } = await testLatency(name, url, LATENCY_TIMEOUT)
             appendProxyHistory(name, data.delay, now)
           } catch {
             appendProxyHistory(name, 0, now)
           }
+          if (config.value.ipv6TestEnabled) {
+            try {
+              const { data } = await testLatency(name, IPV6_TEST_URL, IPV6_TEST_TIMEOUT)
+              ipv6Map.value[resolveNowNodeName(name)] = data.delay > 0
+            } catch {
+              ipv6Map.value[resolveNowNodeName(name)] = false
+            }
+          }
         }
       }
-      const workers = Array.from(
-        { length: Math.min(MAX_CONCURRENT, group.all.length) },
-        () => run(),
-      )
-      await Promise.all(workers)
+      await Promise.all(Array.from({ length: Math.min(5, group.all.length) }, () => run()))
+      if (config.value.ipv6TestEnabled) saveIPv6Map()
     } else {
+      if (config.value.ipv6TestEnabled) {
+        testGroupLatency(groupName, IPV6_TEST_URL, IPV6_TEST_TIMEOUT)
+          .then(({ data }) => {
+            const results = data as Record<string, number>
+            for (const [name, delay] of Object.entries(results)) {
+              ipv6Map.value[resolveNowNodeName(name)] = delay > 0
+            }
+            saveIPv6Map()
+          })
+          .catch(() => {
+            for (const name of group.all!) {
+              ipv6Map.value[resolveNowNodeName(name)] = false
+            }
+            saveIPv6Map()
+          })
+      }
       try {
         const { data } = await testGroupLatency(groupName, url, Math.max(5000, LATENCY_TIMEOUT))
         const results = data as Record<string, number>

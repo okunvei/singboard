@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useConnectionsStore } from '@/stores/connections'
 import { formatBytes, formatSpeed, formatDuration } from '@/utils/format'
+import { getGeoIPForIP, type IPGeoInfo } from '@/api/geoip'
 import type { Connection } from '@/types'
 
 const {
@@ -96,6 +97,47 @@ function formatChains(chains?: string[]): string {
 function closeDetail() {
   selectedConnection.value = null
 }
+
+function isIPAddress(str: string): boolean {
+  return /^[\d.]+$/.test(str) || str.includes(':')
+}
+
+// Get the real destination IP (skip fakeip range 198.18.0.0/15)
+function getDestIP(conn: Connection): string | null {
+  const ip = conn.metadata.destinationIP
+  if (!ip) return null
+  const parts = ip.split('.')
+  if (parts.length === 4) {
+    const a = parseInt(parts[0])
+    const b = parseInt(parts[1])
+    if (a === 198 && (b === 18 || b === 19)) return null
+  }
+  return ip
+}
+
+const geoInfo = ref<IPGeoInfo | null>(null)
+const geoLoading = ref(false)
+const geoError = ref(false)
+
+watch(selectedConnection, async (conn) => {
+  geoInfo.value = null
+  geoError.value = false
+  geoLoading.value = false
+
+  if (!conn) return
+
+  const ip = getDestIP(conn)
+  if (!ip) return
+
+  geoLoading.value = true
+  try {
+    geoInfo.value = await getGeoIPForIP(ip)
+  } catch {
+    geoError.value = true
+  } finally {
+    geoLoading.value = false
+  }
+})
 
 onMounted(() => {
   start()
@@ -294,6 +336,27 @@ onMounted(() => {
               <span class="break-all">{{ getProcess(selectedConnection) || '-' }}</span>
               <span v-if="selectedConnection.metadata.processPath" class="text-base-content/50">进程路径</span>
               <span v-if="selectedConnection.metadata.processPath" class="break-all">{{ selectedConnection.metadata.processPath }}</span>
+            </div>
+          </div>
+
+          <!-- IP 地理信息 -->
+          <div v-if="getDestIP(selectedConnection)">
+            <h4 class="text-sm font-semibold text-base-content/70 mb-2">IP 地理信息</h4>
+            <div v-if="geoLoading" class="text-sm text-base-content/40">
+              <span class="loading loading-spinner loading-xs mr-1"></span>加载中...
+            </div>
+            <div v-else-if="geoError" class="text-sm text-base-content/40">
+              查询失败
+            </div>
+            <div v-else-if="geoInfo" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <span class="text-base-content/50">IP</span>
+              <span>{{ geoInfo.ip }}</span>
+              <span class="text-base-content/50">ASN</span>
+              <span>{{ geoInfo.asn ? `AS${geoInfo.asn}` : '-' }}</span>
+              <span class="text-base-content/50">运营商</span>
+              <span>{{ geoInfo.asnOrganization || geoInfo.organization || '-' }}</span>
+              <span class="text-base-content/50">位置</span>
+              <span>{{ [geoInfo.city, geoInfo.region, geoInfo.country].filter(Boolean).join(', ') || '-' }}</span>
             </div>
           </div>
 

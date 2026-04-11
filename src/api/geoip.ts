@@ -24,6 +24,36 @@ export async function getIPFromIpipnet() {
   return { ip, location }
 }
 
+export interface IPGeoInfo {
+  ip: string
+  asn: number | null
+  asnOrganization: string
+  city: string
+  region: string
+  country: string
+  organization: string
+}
+
+const geoipCache = new Map<string, IPGeoInfo>()
+
+export async function getGeoIPForIP(ip: string): Promise<IPGeoInfo> {
+  const cached = geoipCache.get(ip)
+  if (cached) return cached
+
+  const data = await fetchJson(`https://api.ip.sb/geoip/${ip}`)
+  const info: IPGeoInfo = {
+    ip: data.ip ?? ip,
+    asn: data.asn ?? null,
+    asnOrganization: data.asn_organization ?? '',
+    city: data.city ?? '',
+    region: data.region ?? '',
+    country: data.country ?? '',
+    organization: data.organization ?? '',
+  }
+  geoipCache.set(ip, info)
+  return info
+}
+
 export async function getIPFromIpsb(): Promise<IPInfo> {
   const data = await fetchJson('https://api.ip.sb/geoip?t=' + Date.now())
   return {
