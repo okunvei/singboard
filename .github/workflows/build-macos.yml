@@ -56,7 +56,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
+            src-tauri/target/aarch64-apple-darwin
+            src-tauri/target/x86_64-apple-darwin
           key: macos-universal-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: |
             macos-universal-cargo-
@@ -146,7 +147,7 @@ jobs:
             1. 根据机型下载对应 zip，解压后将 `Singboard.app` 拖入应用程序文件夹
             2. 前往 [sing-box releases](https://github.com/SagerNet/sing-box/releases) 下载对应架构内核（arm64 或 amd64）
             3. 解压后改名为 `sing-box`，放入工作目录（与 `config.json` 同级）
-            4. 首次启动核心前必须在设置界面安装服务，安装/卸载服务时会弹出一次管理员密码框（用于安装/卸载特权 Helper），之后无需再次输入
+            4. 首次启动核心时会弹出一次管理员密码框（用于安装特权 Helper），之后无需再次输入
           files: release-assets/*.zip
           draft: false
           prerelease: false
