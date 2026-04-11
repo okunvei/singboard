@@ -1,9 +1,9 @@
 use reqwest;
 use std::time::{Duration, Instant};
 use std::sync::Mutex;
-use lazy_static::lazy_static; // 注意：如果报错，请看下方说明
+use lazy_static::lazy_static;
 
-// 1. 创建一个全局的“代理盒子”，让所有网络函数都能读取
+// 1. 创建一个全局的"代理盒子"，让所有网络函数都能读取
 lazy_static! {
     static ref SELF_PROXY: Mutex<String> = Mutex::new(String::new());
 }
@@ -57,7 +57,6 @@ fn get_macos_system_proxy() -> String {
 
 #[tauri::command]
 pub async fn fetch_url(url: String) -> Result<String, String> {
-    // 3. 在发起请求前，先看看盒子里有没有代理地址
     let proxy_str = SELF_PROXY.lock().unwrap().clone();
 
     // 自身代理优先，为空时回退到 macOS 系统代理
@@ -69,10 +68,8 @@ pub async fn fetch_url(url: String) -> Result<String, String> {
 
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        // 伪装成 Chrome 浏览器，防止被订阅服务器拒绝
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-    // 如果填了代理，就给请求客户端装上代理
     if !effective_proxy.is_empty() {
         if let Ok(proxy) = reqwest::Proxy::all(&effective_proxy) {
             builder = builder.proxy(proxy);
@@ -98,7 +95,6 @@ pub async fn http_ping(url: String, count: u32) -> Result<f64, String> {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(5));
 
-    // 测速同样应用代理，否则测出来的延迟是不准的
     if !effective_proxy.is_empty() {
         if let Ok(proxy) = reqwest::Proxy::all(&effective_proxy) {
             builder = builder.proxy(proxy);
@@ -123,30 +119,30 @@ pub async fn http_ping(url: String, count: u32) -> Result<f64, String> {
     Ok(total / success as f64)
 }
 
-/// 读取运行配置，检测是否有 mixed 入站且 set_system_proxy=true
+/// 检测 macOS 系统代理是否开启（HTTP、HTTPS、SOCKS 任意一个开启即返回 true）
+/// 不再依赖配置文件，直接查询系统当前代理状态
 #[tauri::command]
-pub async fn check_system_proxy_inbound(config_path: String) -> Result<bool, String> {
-    let content = tokio::fs::read_to_string(&config_path)
+pub async fn check_system_proxy_inbound(_config_path: String) -> Result<bool, String> {
+    let out = tokio::process::Command::new("scutil")
+        .args(["--proxy"])
+        .output()
         .await
-        .map_err(|e| format!("读取配置失败: {}", e))?;
-    let json: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {}", e))?;
+        .map_err(|e| format!("scutil 执行失败: {}", e))?;
 
-    let inbounds = match json.get("inbounds").and_then(|v| v.as_array()) {
-        Some(arr) => arr,
-        None => return Ok(false),
-    };
+    let text = String::from_utf8_lossy(&out.stdout);
 
-    for inbound in inbounds {
-        let is_mixed = inbound.get("type").and_then(|v| v.as_str()) == Some("mixed");
-        let set_proxy = inbound
-            .get("set_system_proxy")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if is_mixed && set_proxy {
+    for line in text.lines() {
+        let line = line.trim();
+        // HTTPEnable、HTTPSEnable、SOCKSEnable 任意一个为 1 即视为代理开启
+        if (line.starts_with("HTTPEnable")
+            || line.starts_with("HTTPSEnable")
+            || line.starts_with("SOCKSEnable"))
+            && line.ends_with(": 1")
+        {
             return Ok(true);
         }
     }
+
     Ok(false)
 }
 
@@ -154,7 +150,6 @@ pub async fn check_system_proxy_inbound(config_path: String) -> Result<bool, Str
 /// 遍历所有网络服务，逐一关闭代理
 #[tauri::command]
 pub async fn clear_macos_system_proxy() -> Result<(), String> {
-    // 获取所有网络服务列表
     let services_out = tokio::process::Command::new("networksetup")
         .args(["-listallnetworkservices"])
         .output()
@@ -162,7 +157,7 @@ pub async fn clear_macos_system_proxy() -> Result<(), String> {
         .map_err(|e| format!("获取网络服务列表失败: {}", e))?;
 
     let services_text = String::from_utf8_lossy(&services_out.stdout);
-    // 第一行是提示语，跳过
+    // 第一行是提示语，跳过；带 * 前缀的是已停用的网卡，跳过
     let services: Vec<&str> = services_text
         .lines()
         .skip(1)
