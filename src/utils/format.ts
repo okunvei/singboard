@@ -38,17 +38,34 @@ export function formatDate(dateStr: string): string {
   return Math.floor(diff / 86400000) + ' 天前'
 }
 
+function getLatencyThresholds(): { warn: number; danger: number } {
+  try {
+    const saved = localStorage.getItem('singboard-config')
+    if (saved) {
+      const raw = JSON.parse(saved)
+      const warn = typeof raw?.latencyWarnThreshold === 'number' && raw.latencyWarnThreshold > 0
+        ? raw.latencyWarnThreshold : 300
+      const danger = typeof raw?.latencyDangerThreshold === 'number' && raw.latencyDangerThreshold > 0
+        ? raw.latencyDangerThreshold : 800
+      return { warn, danger }
+    }
+  } catch {}
+  return { warn: 300, danger: 800 }
+}
+
 export function latencyColor(delay: number): string {
   if (delay === 0) return 'bg-base-content/10 text-base-content/50'
-  if (delay < 300) return 'bg-success/15 text-success'
-  if (delay < 800) return 'bg-amber-500/15 text-amber-600'
+  const { warn, danger } = getLatencyThresholds()
+  if (delay < warn) return 'bg-success/15 text-success'
+  if (delay < danger) return 'bg-amber-500/15 text-amber-600'
   return 'bg-error/15 text-error'
 }
 
 export function dotColor(delay: number): string {
   if (delay === 0) return 'bg-base-content/20'
-  if (delay < 300) return 'bg-success'
-  if (delay < 800) return 'bg-amber-500'
+  const { warn, danger } = getLatencyThresholds()
+  if (delay < warn) return 'bg-success'
+  if (delay < danger) return 'bg-amber-500'
   return 'bg-error'
 }
 

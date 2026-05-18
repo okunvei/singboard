@@ -7,7 +7,7 @@ use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 
 #[tauri::command]
 fn set_close_to_tray(enabled: bool) {
@@ -18,10 +18,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 1 && args[1] == "service" {
-        let service_name = args
-            .get(2)
-            .cloned()
-            .unwrap_or_else(|| "sing-box".to_string());
+        let service_name = args.get(2).cloned().unwrap_or_else(|| "sing-box".to_string());
         if let Err(e) = singboard_lib::service::wrapper::run_service(&service_name) {
             eprintln!("Service error: {}", e);
             std::process::exit(1);
@@ -46,25 +43,22 @@ fn run_gui() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_window(app);
         }))
-        .plugin(
-            tauri_plugin_window_state::Builder::new()
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::all()
-                        .difference(tauri_plugin_window_state::StateFlags::VISIBLE),
-                )
-                .build(),
-        )
+        .plugin(tauri_plugin_window_state::Builder::new()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::all()
+                    .difference(tauri_plugin_window_state::StateFlags::VISIBLE),
+            )
+            .build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init()) // ✨ 新增
         .setup(|app| {
             let app_handle = app.handle().clone();
 
             let show = MenuItemBuilder::with_id("show", "打开面板")
-                .build(&app_handle)
-                .expect("menu item");
+                .build(&app_handle).expect("menu item");
             let sep = PredefinedMenuItem::separator(&app_handle).expect("separator");
             let quit = MenuItemBuilder::with_id("quit", "退出")
-                .build(&app_handle)
-                .expect("menu item");
+                .build(&app_handle).expect("menu item");
             let menu = MenuBuilder::new(&app_handle)
                 .item(&show)
                 .item(&sep)
@@ -76,25 +70,27 @@ fn run_gui() {
                 .icon(app.default_window_icon().cloned().expect("app icon"))
                 .tooltip("Singboard")
                 .menu(&menu)
-                .on_tray_icon_event(move |_tray, event| {
-                    if let TrayIconEvent::Click {
-                        button,
-                        button_state,
-                        ..
-                    } = event
-                    {
-                        if matches!(
-                            (button, button_state),
-                            (MouseButton::Left, MouseButtonState::Up)
-                        ) {
-                            show_window(&app_handle);
+                // --- 显式禁用左键点击弹出菜单 ---
+                .menu_on_left_click(false) 
+                .on_tray_icon_event(move |tray, event| {
+                    if let TrayIconEvent::Click { button, button_state, .. } = event {
+                        // 建议使用 MouseButtonState::Down 或 Up 的其中一个
+                        if button == MouseButton::Left && button_state == MouseButtonState::Up {
+                            let handle = tray.app_handle();
+                            // --- 使用 async_runtime 稍微解耦，避免阻塞当前事件循环导致的 UI 冲突 ---
+                            let handle_clone = handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                show_window(&handle_clone);
+                            });
                         }
                     }
                 })
-                .on_menu_event(|app, event| match event.id().as_ref() {
-                    "show" => show_window(app),
-                    "quit" => app.exit(0),
-                    _ => {}
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "show" => show_window(app),
+                        "quit" => app.exit(0),
+                        _ => {}
+                    }
                 })
                 .build(&app.handle().clone())
                 .expect("tray icon");
@@ -142,6 +138,7 @@ fn run_gui() {
             singboard_lib::commands::srs::srs_list_provider,
             singboard_lib::commands::network::fetch_url,
             singboard_lib::commands::network::http_ping,
+            singboard_lib::commands::network::set_self_proxy,
             singboard_lib::commands::network::dns_query,
         ])
         .build(tauri::generate_context!())
@@ -153,7 +150,9 @@ fn run_gui() {
             match event {
                 tauri::RunEvent::WindowEvent {
                     label,
-                    event: tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_),
+                    event:
+                        tauri::WindowEvent::Resized(_)
+                        | tauri::WindowEvent::Moved(_),
                     ..
                 } => {
                     if label == "main" {
