@@ -107,6 +107,12 @@ function normalizeConfig(raw: any): AppConfig {
     activeConfigProfileId,
     closeToTray: typeof raw?.closeToTray === 'boolean' ? raw.closeToTray : true,
     selfProxy: typeof raw?.selfProxy === 'string' ? raw.selfProxy : '',
+    latencyWarnThreshold: typeof raw?.latencyWarnThreshold === 'number' && raw.latencyWarnThreshold > 0
+      ? raw.latencyWarnThreshold
+      : 300,
+    latencyDangerThreshold: typeof raw?.latencyDangerThreshold === 'number' && raw.latencyDangerThreshold > 0
+      ? raw.latencyDangerThreshold
+      : 800,
   }
 }
 

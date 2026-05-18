@@ -170,4 +170,6 @@ export interface AppConfig {
   activeConfigProfileId: string
   closeToTray: boolean
   selfProxy: string
+  latencyWarnThreshold: number
+  latencyDangerThreshold: number
 }

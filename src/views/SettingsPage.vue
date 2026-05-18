@@ -16,6 +16,7 @@ import { normalizeVersionText } from '@/utils/format'
 import { open } from '@tauri-apps/plugin-dialog'
 import { patchConfig, fetchConfig } from '@/api'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import DnsQueryTool from '@/components/settings/DnsQueryTool.vue'
 
 const {
   config,
@@ -423,7 +424,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-6 max-w-2xl">
+  <div class="space-y-6 max-w-2xl mx-auto w-full">
     <h1 class="text-xl font-bold">设置</h1>
     <ConfirmDialog ref="confirmDialogRef" />
 
@@ -684,7 +685,31 @@ watch(
           <span class="label-text text-xs">IPv6 连通性测试</span>
         </div>
       </div>
+      <div class="flex gap-3">
+        <div class="form-control flex-1">
+          <label class="label"><span class="label-text text-xs">延迟黄色阈值 (ms)</span></label>
+          <input
+            v-model.number="config.latencyWarnThreshold"
+            type="number"
+            min="1"
+            class="input input-sm input-bordered"
+            placeholder="300"
+          />
+        </div>
+        <div class="form-control flex-1">
+          <label class="label"><span class="label-text text-xs">延迟红色阈值 (ms)</span></label>
+          <input
+            v-model.number="config.latencyDangerThreshold"
+            type="number"
+            min="1"
+            class="input input-sm input-bordered"
+            placeholder="800"
+          />
+        </div>
+      </div>
     </div>
+
+    <DnsQueryTool />
 
     <div class="bg-base-200 rounded-lg p-4 space-y-3">
       <h2 class="font-semibold text-sm">路径配置</h2>
