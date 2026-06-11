@@ -162,7 +162,6 @@ export interface AppConfig {
   singboxPath: string
   workingDir: string
   serviceName: string
-  startupDelaySeconds: number
   theme: string
   latencyTestUrl: string
   ipv6TestEnabled: boolean
@@ -170,4 +169,7 @@ export interface AppConfig {
   configProfiles: ConfigProfile[]
   activeConfigProfileId: string
   closeToTray: boolean
+  selfProxy: string
+  latencyWarnThreshold: number
+  latencyDangerThreshold: number
 }
