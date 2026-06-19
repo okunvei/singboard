@@ -104,7 +104,7 @@ fn process_config_logic(config_path: &str, svc_name: &str) -> Result<(String, bo
     // 无论 log 检测结果如何，先确保 clash_api 存在，不存在则就地写回原始文件
     if json.get("experimental").and_then(|e| e.get("clash_api")).is_none() {
         let clash_api_value = serde_json::json!({
-            "external_controller": "0.0.0.0:9090",
+            "external_controller": "127.0.0.1:9090",
             "external_ui": "ui"
         });
         if let Some(exp) = json.get_mut("experimental").and_then(|e| e.as_object_mut()) {
