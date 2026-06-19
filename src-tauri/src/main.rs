@@ -66,21 +66,13 @@ fn run_gui() {
         .plugin(tauri_plugin_window_state::Builder::new()
             .with_state_flags(
                 tauri_plugin_window_state::StateFlags::all()
-                    .difference(tauri_plugin_window_state::StateFlags::VISIBLE)
-                    .difference(tauri_plugin_window_state::StateFlags::DECORATIONS),
+                    .difference(tauri_plugin_window_state::StateFlags::VISIBLE),
             )
             .build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init()) // ✨ 新增
         .setup(|app| {
             let app_handle = app.handle().clone();
-
-            // 强制设置透明（防止 window-state 插件从缓存恢复旧的非透明状态）
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_decorations(false);
-                #[cfg(target_os = "macos")]
-                let _ = window.set_transparent(true);
-            }
 
             let show = MenuItemBuilder::with_id("show", "打开面板")
                 .build(&app_handle).expect("menu item");
@@ -176,8 +168,7 @@ fn run_gui() {
         .run(|app, event| {
             use tauri_plugin_window_state::AppHandleExt;
             let state_flags = tauri_plugin_window_state::StateFlags::all()
-                .difference(tauri_plugin_window_state::StateFlags::VISIBLE)
-                .difference(tauri_plugin_window_state::StateFlags::DECORATIONS);
+                .difference(tauri_plugin_window_state::StateFlags::VISIBLE);
             match event {
                 tauri::RunEvent::WindowEvent {
                     label,
