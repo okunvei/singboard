@@ -100,6 +100,28 @@ fn process_config_logic(config_path: &str, svc_name: &str) -> Result<(String, bo
 
     let use_user_log = !disabled && !output.trim().is_empty();
 
+    // ── 第一步：独立检测 experimental.clash_api，优先级最高 ──────────────────
+    // 无论 log 检测结果如何，先确保 clash_api 存在，不存在则就地写回原始文件
+    if json.get("experimental").and_then(|e| e.get("clash_api")).is_none() {
+        let clash_api_value = serde_json::json!({
+            "external_controller": "127.0.0.1:9090",
+            "external_ui": "ui"
+        });
+        if let Some(exp) = json.get_mut("experimental").and_then(|e| e.as_object_mut()) {
+            exp.insert("clash_api".to_string(), clash_api_value);
+        } else {
+            json["experimental"] = serde_json::json!({
+                "clash_api": {
+                    "external_controller": "0.0.0.0:9090",
+                    "external_ui": "ui"
+                }
+            });
+        }
+        fs::write(config_path, serde_json::to_string_pretty(&json).unwrap())
+            .map_err(|e| format!("写入 clash_api 配置失败: {}", e))?;
+    }
+
+    // ── 第二步：原有 log 检测逻辑，完全不变 ──────────────────────────────────
     if use_user_log {
         Ok((config_path.to_string(), true))
     } else {
