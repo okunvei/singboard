@@ -39,8 +39,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "minimumSystemVersion": "10.15",
-      "privateApi": true
+      "minimumSystemVersion": "10.15"
     }
   },
   "plugins": {}
