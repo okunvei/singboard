@@ -136,7 +136,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex flex-col h-screen bg-base-100 text-base-content">
+  <div class="flex flex-col h-screen bg-base-100 text-base-content rounded-xl overflow-hidden shadow-xl">
     <Titlebar />
     <div class="flex flex-1 overflow-hidden">
       <Sidebar />
