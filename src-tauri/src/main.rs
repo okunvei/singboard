@@ -72,7 +72,7 @@ fn run_gui() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init()) // ✨ 新增
         .setup(|app| {
-            // macOS 原生窗口圆角 + 透明背景
+            // macOS 原生窗口圆角 + 透明
             #[cfg(target_os = "macos")]
             {
                 use objc::runtime::Object;
@@ -80,41 +80,17 @@ fn run_gui() {
                 if let Some(window) = app.get_webview_window("main") {
                     let ns_window = window.ns_window().expect("ns_window") as *mut Object;
                     unsafe {
-                        // 1. 窗口本身透明
+                        // 窗口本身透明
                         let _: () = msg_send![ns_window, setOpaque: false];
-                        let _: () = msg_send![ns_window, setBackgroundColor: {
-                            let cls = class!(NSColor);
-                            let color: *mut Object = msg_send![cls, clearColor];
-                            color
-                        }];
+                        let clear: *mut Object = msg_send![class!(NSColor), clearColor];
+                        let _: () = msg_send![ns_window, setBackgroundColor: clear];
 
-                        // 2. contentView 圆角
+                        // contentView 圆角裁剪
                         let content_view: *mut Object = msg_send![ns_window, contentView];
                         let _: () = msg_send![content_view, setWantsLayer: true];
                         let layer: *mut Object = msg_send![content_view, layer];
                         let _: () = msg_send![layer, setCornerRadius: 12.0f64];
                         let _: () = msg_send![layer, setMasksToBounds: true];
-
-                        // 3. 找到 WKWebView 并设置透明
-                        // contentView 的第一个子视图通常就是 WKWebView
-                        let subviews: *mut Object = msg_send![content_view, subviews];
-                        let count: usize = msg_send![subviews, count];
-                        for i in 0..count {
-                            let subview: *mut Object = msg_send![subviews, objectAtIndex: i];
-                            // 设置背景透明
-                            let _: () = msg_send![subview, setOpaque: false];
-                            let clear: *mut Object = msg_send![class!(NSColor), clearColor];
-                            // 尝试 setValue:forKey: 设置 drawsBackground
-                            let key = {
-                                let s = "drawsBackground";
-                                let cls = class!(NSString);
-                                let ns: *mut Object = msg_send![cls, stringWithUTF8String: s.as_ptr() as *const i8];
-                                ns
-                            };
-                            let no_val: *mut Object = msg_send![class!(NSNumber), numberWithBool: false];
-                            let _: () = msg_send![subview, setValue: no_val forKey: key];
-                        }
-
                         let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: true];
                     }
                 }
