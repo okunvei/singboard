@@ -58,12 +58,16 @@ Extract and:
 
 ### 2. Required Configuration
 
-Your config **must include** `clash_api` under `experimental`:
+The application requires `experimental.clash_api`.
+
+If `experimental.clash_api` is not configured in your config file, the following config (experimental.clash_api) will be automatically added before startup:
 
 ```json
-"clash_api": {
-  "external_controller": "127.0.0.1:9090",
-  "external_ui": "ui"
+"experimental": {
+  "clash_api": {
+    "external_controller": "127.0.0.1:9090",
+    "external_ui": "ui"
+  }
 }
 ```
 

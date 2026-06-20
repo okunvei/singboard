@@ -29,7 +29,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
 <template>
   <div
     data-tauri-drag-region
-    class="flex items-center h-10 bg-base-200 border-b border-base-300 select-none px-3"
+    class="flex items-center h-10 bg-base-200 border-b border-base-300 select-none px-3 rounded-tl-xl rounded-tr-xl"
   >
     <!-- macOS 风格：红绿灯在左侧 -->
     <div class="flex items-center gap-1.5 mr-3">

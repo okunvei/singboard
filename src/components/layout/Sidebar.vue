@@ -159,7 +159,7 @@ onBeforeUnmount(() => { resizeOb?.disconnect(); resizeOb = null })
 </script>
 
 <template>
-  <div class="flex flex-col w-48 bg-base-200 border-r border-base-300 h-full">
+  <div class="flex flex-col w-48 bg-base-200 border-r border-base-300 h-full rounded-bl-xl">
     <nav class="flex-1 py-2 overflow-y-auto">
       <button
         v-for="item in navItems"
