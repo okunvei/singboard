@@ -150,7 +150,15 @@ jobs:
             | `Singboard-macos-x86_64-*.zip` | Intel Mac |
 
             ### 使用说明
-            1. 【重要】sing-box 的配置文件，必须在 experimental 中配置 clash_api ，否则会运行异常。
+            1. 【重要】软件运行必须依赖 sing-box 配置中 experimental 的 clash_api ，否则会运行异常，所以如果你没有配置，会自动覆写以下 experimental.clash_api，如果你配置了，则不会覆写。
+            ```
+            "experimental": {
+              "clash_api": {
+                "external_controller": "127.0.0.1:9090",
+                "external_ui": "ui"
+              }
+            }
+            ```
             2. 根据机型下载对应 zip，解压后将 `Singboard.app` 拖入应用程序文件夹，然后打开终端，执行以下命令【不执行会提示文件损坏，无法打开运行】
             ```
             xattr -cr /Applications/Singboard.app
