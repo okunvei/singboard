@@ -72,6 +72,29 @@ fn run_gui() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init()) // ✨ 新增
         .setup(|app| {
+            // macOS 原生窗口圆角（CALayer，兼容早期 macOS）
+            #[cfg(target_os = "macos")]
+            {
+                use objc::runtime::Object;
+                use objc::{class, msg_send, sel, sel_impl};
+                if let Some(window) = app.get_webview_window("main") {
+                    let ns_window = window.ns_window().expect("ns_window") as *mut Object;
+                    unsafe {
+                        // 获取 contentView
+                        let content_view: *mut Object = msg_send![ns_window, contentView];
+                        // 让 contentView 使用 CALayer
+                        let _: () = msg_send![content_view, setWantsLayer: true];
+                        // 获取 layer 并设置圆角半径
+                        let layer: *mut Object = msg_send![content_view, layer];
+                        let _: () = msg_send![layer, setCornerRadius: 12.0f64];
+                        // masksToBounds 确保子视图被裁剪到圆角内
+                        let _: () = msg_send![layer, setMasksToBounds: true];
+                        // 隐藏原生标题栏（decorations:false 时已无标题栏，但保险起见）
+                        let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: true];
+                    }
+                }
+            }
+
             let app_handle = app.handle().clone();
 
             let show = MenuItemBuilder::with_id("show", "打开面板")
