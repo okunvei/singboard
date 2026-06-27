@@ -22,18 +22,12 @@ function createClashApiProfile(name: string, url: string, secret: string): Clash
 }
 
 function normalizeConfig(raw: any): AppConfig {
-  const normalizeWindowsPath = (value: unknown): string => {
+  const normalizePath = (value: unknown): string => {
     if (typeof value !== 'string') return ''
     if (value.startsWith('\\\\?\\UNC\\')) return `\\\\${value.slice(8)}`
     if (value.startsWith('\\\\?\\')) return value.slice(4)
     return value
   }
-  const normalizeStartupDelay = (value: unknown): number => {
-    const delay = typeof value === 'number' ? value : Number(value)
-    if (!Number.isFinite(delay)) return 30
-    return Math.min(3600, Math.max(0, Math.round(delay)))
-  }
-
   const savedProfiles = Array.isArray(raw?.clashApis)
     ? raw.clashApis
       .filter((item: any) => item && typeof item === 'object')
@@ -68,14 +62,14 @@ function normalizeConfig(raw: any): AppConfig {
         id: item.id,
         name: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : '未命名配置',
         type: item.type === 'remote' ? 'remote' : 'local',
-        source: typeof item.source === 'string' ? normalizeWindowsPath(item.source) : '',
+        source: typeof item.source === 'string' ? normalizePath(item.source) : '',
         ...(typeof item.lastUpdated === 'string' ? { lastUpdated: item.lastUpdated } : {}),
         autoUpdateInterval: typeof item.autoUpdateInterval === 'number' && item.autoUpdateInterval >= 0 ? item.autoUpdateInterval : 0,
       }))
     : []
 
   // 迁移兼容：旧 configPath 自动创建本地配置
-  const legacyConfigPath = normalizeWindowsPath(raw?.configPath)
+  const legacyConfigPath = normalizePath(raw?.configPath)
   if (configProfiles.length === 0 && legacyConfigPath) {
     configProfiles.push({
       id: createConfigProfileId(),
@@ -95,10 +89,9 @@ function normalizeConfig(raw: any): AppConfig {
   return {
     clashApis,
     activeClashApiId,
-    singboxPath: normalizeWindowsPath(raw?.singboxPath),
-    workingDir: normalizeWindowsPath(raw?.workingDir),
+    singboxPath: normalizePath(raw?.singboxPath),
+    workingDir: normalizePath(raw?.workingDir),
     serviceName: typeof raw?.serviceName === 'string' && raw.serviceName ? raw.serviceName : 'sing-box',
-    startupDelaySeconds: normalizeStartupDelay(raw?.startupDelaySeconds),
     theme: typeof raw?.theme === 'string' && raw.theme ? raw.theme : 'light',
     latencyTestUrl: typeof raw?.latencyTestUrl === 'string' && raw.latencyTestUrl
       ? raw.latencyTestUrl

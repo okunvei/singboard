@@ -10,8 +10,6 @@ import {
   installService,
   uninstallService,
   readServiceErrorLog,
-  startupTaskExists,
-  createStartupTask,
 } from '@/bridge/service'
 import { getSingboxVersion, validateSingboxConfig, getRunningConfigPath, getRemoteConfigPath, copyToRunningConfig } from '@/bridge/config'
 import { normalizeVersionText } from '@/utils/format'
@@ -124,11 +122,6 @@ const actionLoading = ref('')
 const showServiceConfigPanel = ref(false)
 const startupTaskSyncing = ref(false)
 
-function normalizeStartupDelayValue(value: unknown): number {
-  const delay = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(delay)) return 30
-  return Math.min(3600, Math.max(0, Math.round(delay)))
-}
 function parseApiUrl(url: string) {
   const match = url.match(/^(https?):\/\/([^:]+)(?::(\d+))?$/)
   if (match) return { protocol: match[1] as 'http' | 'https', host: match[2], port: match[3] ?? '' }
@@ -354,15 +347,7 @@ async function handleServiceAction(action: string) {
       case 'stop': await stopService(name); break
       case 'install': {
         const runningConfigPath = await getRunningConfigPath()
-        const startupDelaySeconds = normalizeStartupDelayValue(config.value.startupDelaySeconds)
-        config.value.startupDelaySeconds = startupDelaySeconds
-        await installService(
-          name,
-          config.value.singboxPath,
-          runningConfigPath,
-          config.value.workingDir,
-          startupDelaySeconds,
-        )
+        await installService(name, config.value.singboxPath, runningConfigPath, config.value.workingDir)
         break
       }
       case 'uninstall': await uninstallService(name); break
@@ -378,7 +363,7 @@ async function handleServiceAction(action: string) {
 async function browseSingboxPath() {
   const selected = await open({
     multiple: false,
-    filters: [{ name: '可执行文件', extensions: ['exe'] }],
+    filters: [{ name: 'sing-box 可执行文件', extensions: [] }],
     defaultPath: config.value.workingDir.trim() || undefined,
   })
   if (selected) {
@@ -403,27 +388,6 @@ async function checkVersion() {
     singboxVersion.value = normalizeVersionText(raw)
   } catch {
     singboxVersion.value = '获取失败'
-  }
-}
-
-function updateStartupDelay() {
-  config.value.startupDelaySeconds = normalizeStartupDelayValue(config.value.startupDelaySeconds)
-}
-
-async function syncStartupDelayToTask() {
-  const serviceName = config.value.serviceName.trim()
-  if (!serviceName || startupTaskSyncing.value) return
-
-  startupTaskSyncing.value = true
-  try {
-    if (await startupTaskExists(serviceName)) {
-      await createStartupTask(serviceName, config.value.startupDelaySeconds)
-      pushToast({ message: `自启延迟已同步为 ${config.value.startupDelaySeconds} 秒`, type: 'info' })
-    }
-  } catch (e: any) {
-    pushToast({ message: '同步自启延迟失败: ' + (e?.message || e), type: 'error' }, 6000)
-  } finally {
-    startupTaskSyncing.value = false
   }
 }
 
@@ -519,7 +483,7 @@ watch(
               v-model="config.singboxPath"
               type="text"
               class="input input-sm input-bordered flex-1"
-              placeholder="C:\sing-box\sing-box.exe"
+              placeholder="/usr/local/bin/sing-box"
             />
             <button class="btn btn-sm btn-outline shrink-0" @click="browseSingboxPath">浏览</button>
           </div>
@@ -534,21 +498,6 @@ watch(
               placeholder="留空则使用配置文件所在目录"
             />
             <button class="btn btn-sm btn-outline shrink-0" @click="browseWorkingDir">浏览</button>
-          </div>
-        </div>
-        <div class="form-control max-w-xs">
-          <label class="label"><span class="label-text text-xs">延迟启动时间</span></label>
-          <div class="flex items-center gap-2">
-            <input
-              v-model.number="config.startupDelaySeconds"
-              type="number"
-              min="0"
-              max="3600"
-              step="1"
-              class="input input-sm input-bordered w-28"
-              @change="updateStartupDelay(); syncStartupDelayToTask()"
-            />
-            <span class="text-xs text-base-content/60">秒</span>
           </div>
         </div>
       </div>
@@ -848,7 +797,7 @@ watch(
             class="toggle toggle-sm toggle-primary"
             v-model="config.closeToTray"
           />
-          <span class="label-text text-xs">关闭时隐藏到系统托盘</span>
+          <span class="label-text text-xs">关闭时隐藏到顶部系统菜单栏</span>
 
         </div>
       </div>
