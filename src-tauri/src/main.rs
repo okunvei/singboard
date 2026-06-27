@@ -72,6 +72,30 @@ fn run_gui() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init()) // ✨ 新增
         .setup(|app| {
+            // macOS 原生窗口圆角 + 透明
+            #[cfg(target_os = "macos")]
+            {
+                use objc::runtime::Object;
+                use objc::{class, msg_send, sel, sel_impl};
+                if let Some(window) = app.get_webview_window("main") {
+                    let ns_window = window.ns_window().expect("ns_window") as *mut Object;
+                    unsafe {
+                        // 窗口本身透明
+                        let _: () = msg_send![ns_window, setOpaque: false];
+                        let clear: *mut Object = msg_send![class!(NSColor), clearColor];
+                        let _: () = msg_send![ns_window, setBackgroundColor: clear];
+
+                        // contentView 圆角裁剪
+                        let content_view: *mut Object = msg_send![ns_window, contentView];
+                        let _: () = msg_send![content_view, setWantsLayer: true];
+                        let layer: *mut Object = msg_send![content_view, layer];
+                        let _: () = msg_send![layer, setCornerRadius: 12.0f64];
+                        let _: () = msg_send![layer, setMasksToBounds: true];
+                        let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: true];
+                    }
+                }
+            }
+
             let app_handle = app.handle().clone();
 
             let show = MenuItemBuilder::with_id("show", "打开面板")
