@@ -24,7 +24,7 @@ import {
 const { config, configProfiles } = useConfigStore()
 const { serviceStatus, ready: serviceReady } = useServiceStore()
 const { start: startAutoUpdate } = useConfigAutoUpdate()
-const { loadProxies, resumePendingTests } = useProxiesStore()
+const { loadProxies, resumePendingTests, proxyMap } = useProxiesStore()
 const { resetHistory: resetOverviewHistory } = useOverviewStore()
 const { resetOnRestart: resetConnections } = useConnectionsStore()
 
@@ -120,8 +120,10 @@ watch(
       if (coreStartedOnce) {
         resetOverviewHistory()
         resetConnections()
+        proxyMap.value = {}          // 立即清空，页面不再显示旧数据
         sessionStorage.removeItem(NETWORK_CACHE_KEY)
       }
+      loadProxies(true)              // 重新拉取（fresh=true 跳过历史合并）
       coreStartedOnce = true
       setTimeout(runNetworkAutoTest, 3000)
     } else if (coreStartedOnce) {
